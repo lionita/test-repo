@@ -14,7 +14,13 @@
         <junit.version>5.10.2</junit.version>
     </properties>
 
+    
     <dependencies>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-tx</artifactId>
+            <version>6.1.14</version>
+        </dependency>
         <dependency>
             <groupId>com.example</groupId>
             <artifactId>auction-module</artifactId>

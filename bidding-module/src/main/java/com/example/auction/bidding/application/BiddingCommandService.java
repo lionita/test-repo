@@ -6,6 +6,8 @@ import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
 import com.example.auction.bidding.ports.BidRepositoryPort;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.UUID;
@@ -21,6 +23,7 @@ public class BiddingCommandService {
         this.outboxPort = outboxPort;
     }
 
+    @Transactional
     public void placeBid(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey) {
         Objects.requireNonNull(auctionId, "auctionId is required");
         if (bidderId == null || bidderId.isBlank()) throw new IllegalArgumentException("bidderId is required");

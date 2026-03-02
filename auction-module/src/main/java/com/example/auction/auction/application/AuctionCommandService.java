@@ -5,6 +5,8 @@ import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
 
+import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -17,6 +19,7 @@ public class AuctionCommandService {
         this.outboxPort = outboxPort;
     }
 
+    @Transactional
     public UUID create(BigDecimal reservePrice, BigDecimal minIncrement) {
         UUID id = UUID.randomUUID();
         auctionRepository.save(new Auction(id, reservePrice, minIncrement, AuctionStatus.SCHEDULED, null));
@@ -24,6 +27,7 @@ public class AuctionCommandService {
         return id;
     }
 
+    @Transactional
     public void start(UUID auctionId) {
         Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         auctionRepository.save(auction.start());
