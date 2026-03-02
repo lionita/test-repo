@@ -7,7 +7,11 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import com.example.auction.app.security.JwtSubjectValidator;
 
 import java.math.BigDecimal;
 import java.net.URI;
@@ -26,19 +30,28 @@ public class AuctionController {
     }
 
     @PostMapping
-    public ResponseEntity<Map<String, UUID>> create(@Valid @RequestBody CreateAuctionRequest request) {
+    @PreAuthorize("hasAuthority('SCOPE_auction.write')")
+    public ResponseEntity<Map<String, UUID>> create(@AuthenticationPrincipal Jwt jwt,
+                                                     @Valid @RequestBody CreateAuctionRequest request) {
+        JwtSubjectValidator.requireSubject(jwt);
         UUID id = auctionService.create(request.reservePrice(), request.minIncrement());
         return ResponseEntity.created(URI.create("/api/auctions/" + id)).body(Map.of("auctionId", id));
     }
 
     @PostMapping("/{auctionId}/start")
-    public ResponseEntity<Void> start(@PathVariable UUID auctionId) {
+    @PreAuthorize("hasAuthority('SCOPE_auction.write')")
+    public ResponseEntity<Void> start(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID auctionId) {
+        JwtSubjectValidator.requireSubject(jwt);
         auctionService.start(auctionId);
         return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{auctionId}/bids")
-    public ResponseEntity<Void> placeBid(@PathVariable UUID auctionId, @Valid @RequestBody PlaceBidRequest request) {
+    @PreAuthorize("hasAuthority('SCOPE_bid.write')")
+    public ResponseEntity<Void> placeBid(@AuthenticationPrincipal Jwt jwt,
+                                         @PathVariable UUID auctionId,
+                                         @Valid @RequestBody PlaceBidRequest request) {
+        JwtSubjectValidator.requireSubject(jwt);
         biddingService.placeBid(auctionId, request.bidderId(), request.amount(), request.idempotencyKey());
         return ResponseEntity.accepted().build();
     }
