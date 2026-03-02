@@ -1,32 +1,21 @@
 # test-repo
 
-Spring Boot reference implementation of an auction service using Java 22, Spring Boot 3.5.9, PostgreSQL, REST, Spring Data JPA, Hexagonal-ish layering, and an outbox pattern.
+Multi-module Spring Boot reference implementation using Java 22, Spring Boot 3.5.9, PostgreSQL, REST, Spring Data JPA, Hexagonal-ish layering, and outbox pattern.
 
-## Documents
-- [Auction System Design](docs/auction-system-design.md)
+## Modules
+- `auction-module`: auction aggregate and auction lifecycle use cases.
+- `bidding-module`: bidding use cases and bid-specific ports.
+- `app-module`: Spring Boot app wiring REST adapters + JPA adapters + outbox publisher.
 
-## Architecture at a glance
-- **Inbound adapter**: REST API (`AuctionController`).
-- **Application layer**: `AuctionService` use cases.
-- **Ports**: `AuctionRepositoryPort`, `BidRepositoryPort`, `OutboxPort`.
-- **Outbound adapters**: Spring Data JPA persistence adapters for auctions, bids, and outbox events.
-- **Outbox publisher**: scheduled publisher that marks events as published.
-
-## Tech stack
-- Java 22
-- Spring Boot 3.5.9
-- Spring Web
-- Spring Data JPA
-- PostgreSQL
+## Sample SQL
+- `sql/sample-data.sql` contains sample inserts for auctions, bids, and outbox events.
 
 ## Run tests
 ```bash
-mvn test
+mvn -pl bidding-module test
 ```
 
-## Run locally
-1. Start PostgreSQL and create database/user matching `src/main/resources/application.yml`.
-2. Run:
-   ```bash
-   mvn spring-boot:run
-   ```
+## Run app
+```bash
+mvn -pl app-module spring-boot:run
+```
