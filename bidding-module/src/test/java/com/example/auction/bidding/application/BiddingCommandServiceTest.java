@@ -42,6 +42,45 @@ class BiddingCommandServiceTest {
                 () -> service.placeBid(id, "u1", new BigDecimal("99.99"), "k1"));
     }
 
+    @Test
+    void rejectsBlankBidderId() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        UUID id = UUID.randomUUID();
+        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+
+        var service = new BiddingCommandService(auctions, bids, outbox);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.placeBid(id, "   ", new BigDecimal("100.00"), "k1"));
+    }
+
+    @Test
+    void rejectsNonPositiveAmount() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        UUID id = UUID.randomUUID();
+        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+
+        var service = new BiddingCommandService(auctions, bids, outbox);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.placeBid(id, "u1", BigDecimal.ZERO, "k1"));
+    }
+
+    @Test
+    void rejectsBlankIdempotencyKey() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        UUID id = UUID.randomUUID();
+        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+
+        var service = new BiddingCommandService(auctions, bids, outbox);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.placeBid(id, "u1", new BigDecimal("100.00"), ""));
+    }
+
     static class InMemAuctions implements AuctionRepositoryPort {
         Map<UUID, Auction> data = new HashMap<>();
         public Auction save(Auction auction) { data.put(auction.id(), auction); return auction; }

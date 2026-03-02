@@ -63,7 +63,10 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     }
 
     @Override
+    @Transactional
     public long nextSequence(UUID auctionId) {
+        auctionRepository.findByIdForUpdate(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         return bidRepository.maxSequenceByAuctionId(auctionId) + 1;
     }
 
