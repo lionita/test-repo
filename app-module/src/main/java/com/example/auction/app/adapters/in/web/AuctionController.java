@@ -6,6 +6,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -75,13 +76,16 @@ public class AuctionController {
     public ResponseEntity<Void> placeBid(@AuthenticationPrincipal Jwt jwt,
                                          @PathVariable UUID auctionId,
                                          @Valid @RequestBody PlaceBidRequest request) {
-        JwtSubjectValidator.requireSubject(jwt);
+        String subject = JwtSubjectValidator.requireSubject(jwt);
+        if (!subject.equals(request.bidderId())) {
+            throw new IllegalArgumentException("bidderId must match jwt subject");
+        }
         biddingService.placeBid(auctionId, request.bidderId(), request.amount(), request.idempotencyKey());
         return ResponseEntity.accepted().build();
     }
 
-    public record CreateAuctionRequest(@NotBlank String title,
-                                       @NotBlank String description,
+    public record CreateAuctionRequest(@NotBlank @Size(max = 255) String title,
+                                       @NotBlank @Size(max = 4000) String description,
                                        @NotNull @DecimalMin("0.01") BigDecimal reservePrice,
                                        @NotNull @DecimalMin("0.01") BigDecimal minIncrement,
                                        @NotNull OffsetDateTime startTime,

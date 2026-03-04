@@ -80,6 +80,33 @@ class AuctionCommandServiceTest {
 
 
     @Test
+    void closeExpiredAuctions_skipsContendedAuctionAndClosesOthers() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        var service = new AuctionCommandService(auctions, outbox, bids);
+
+        OffsetDateTime now = OffsetDateTime.parse("2026-01-01T12:00:00Z");
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+
+        auctions.save(new Auction(first, "A1", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                now.minusHours(2), now.minusHours(1), AuctionStatus.LIVE, new BigDecimal("110.00"), null));
+        auctions.save(new Auction(second, "A2", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                now.minusHours(2), now.minusMinutes(30), AuctionStatus.LIVE, new BigDecimal("120.00"), null));
+
+        auctions.lockedSnapshots.put(second, new Auction(second, "A2", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                now.minusHours(2), now.minusMinutes(30), AuctionStatus.CLOSED, new BigDecimal("120.00"), UUID.randomUUID()));
+
+        int closedCount = service.closeExpiredAuctions(now);
+
+        assertEquals(1, closedCount);
+        assertEquals(AuctionStatus.CLOSED, auctions.findById(first).orElseThrow().status());
+        assertEquals(AuctionStatus.LIVE, auctions.findById(second).orElseThrow().status());
+        assertEquals(1, outbox.events.stream().filter("auction.closed"::equals).count());
+    }
+
+    @Test
     void settleTransitionsClosedAuctionAndWritesSettledEvent() {
         var auctions = new InMemAuctions();
         var outbox = new InMemOutbox();
@@ -102,6 +129,7 @@ class AuctionCommandServiceTest {
 
     static class InMemAuctions implements AuctionRepositoryPort {
         Map<UUID, Auction> data = new HashMap<>();
+        Map<UUID, Auction> lockedSnapshots = new HashMap<>();
 
         public Auction save(Auction auction) {
             data.put(auction.id(), auction);
@@ -109,6 +137,15 @@ class AuctionCommandServiceTest {
         }
 
         public Optional<Auction> findById(UUID id) {
+            return Optional.ofNullable(data.get(id));
+        }
+
+        @Override
+        public Optional<Auction> findByIdForUpdate(UUID id) {
+            Auction locked = lockedSnapshots.get(id);
+            if (locked != null) {
+                return Optional.of(locked);
+            }
             return Optional.ofNullable(data.get(id));
         }
 

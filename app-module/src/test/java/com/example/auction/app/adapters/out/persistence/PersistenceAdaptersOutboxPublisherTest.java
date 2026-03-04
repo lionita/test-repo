@@ -27,7 +27,7 @@ class PersistenceAdaptersOutboxPublisherTest {
         RealtimePushAdapter realtimePushAdapter = mock(RealtimePushAdapter.class);
 
         OutboxEventJpaEntity event = pendingEvent("bid.placed");
-        when(outboxRepository.findTop20ByPublishedAtIsNullAndDeadLetteredAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(any()))
+        when(outboxRepository.findReadyToPublish(any()))
                 .thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(
@@ -60,7 +60,7 @@ class PersistenceAdaptersOutboxPublisherTest {
         doThrow(new IllegalStateException("broker unavailable"))
                 .when(eventBusPublisher)
                 .publish(event.getEventType(), event.getAggregateId(), event.getPayload());
-        when(outboxRepository.findTop20ByPublishedAtIsNullAndDeadLetteredAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(any()))
+        when(outboxRepository.findReadyToPublish(any()))
                 .thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(
@@ -84,6 +84,64 @@ class PersistenceAdaptersOutboxPublisherTest {
     }
 
     @Test
+    void publishPending_stillFanoutsRealtimeWhenEventBusPublishFails() {
+        SpringDataAuctionRepository auctionRepository = mock(SpringDataAuctionRepository.class);
+        SpringDataBidRepository bidRepository = mock(SpringDataBidRepository.class);
+        SpringDataOutboxRepository outboxRepository = mock(SpringDataOutboxRepository.class);
+        EventBusPublisher eventBusPublisher = mock(EventBusPublisher.class);
+        RealtimePushAdapter realtimePushAdapter = mock(RealtimePushAdapter.class);
+
+        OutboxEventJpaEntity event = pendingEvent("bid.placed");
+        doThrow(new IllegalStateException("broker unavailable"))
+                .when(eventBusPublisher)
+                .publish(event.getEventType(), event.getAggregateId(), event.getPayload());
+        when(outboxRepository.findReadyToPublish(any()))
+                .thenReturn(List.of(event));
+
+        PersistenceAdapters adapters = new PersistenceAdapters(
+                auctionRepository,
+                bidRepository,
+                outboxRepository,
+                eventBusPublisher,
+                realtimePushAdapter,
+                3,
+                5);
+
+        adapters.publishPending();
+
+        verify(realtimePushAdapter).publish(event.getEventType(), event.getPayload());
+        assertThat(event.getPublishAttempts()).isEqualTo(1);
+        assertThat(event.getPublishedAt()).isNull();
+    }
+
+    @Test
+    void publishPending_processesLegacyEventWithNullNextAttemptAt() {
+        SpringDataAuctionRepository auctionRepository = mock(SpringDataAuctionRepository.class);
+        SpringDataBidRepository bidRepository = mock(SpringDataBidRepository.class);
+        SpringDataOutboxRepository outboxRepository = mock(SpringDataOutboxRepository.class);
+        EventBusPublisher eventBusPublisher = mock(EventBusPublisher.class);
+        RealtimePushAdapter realtimePushAdapter = mock(RealtimePushAdapter.class);
+
+        OutboxEventJpaEntity event = pendingEvent("auction.created");
+        event.setNextAttemptAt(null);
+        when(outboxRepository.findReadyToPublish(any())).thenReturn(List.of(event));
+
+        PersistenceAdapters adapters = new PersistenceAdapters(
+                auctionRepository,
+                bidRepository,
+                outboxRepository,
+                eventBusPublisher,
+                realtimePushAdapter,
+                3,
+                5);
+
+        adapters.publishPending();
+
+        verify(eventBusPublisher).publish(event.getEventType(), event.getAggregateId(), event.getPayload());
+        assertThat(event.getPublishedAt()).isNotNull();
+    }
+
+    @Test
     void publishPending_deadLettersWhenMaxAttemptsReached() {
         SpringDataAuctionRepository auctionRepository = mock(SpringDataAuctionRepository.class);
         SpringDataBidRepository bidRepository = mock(SpringDataBidRepository.class);
@@ -96,7 +154,7 @@ class PersistenceAdaptersOutboxPublisherTest {
         doThrow(new IllegalStateException("still down"))
                 .when(eventBusPublisher)
                 .publish(event.getEventType(), event.getAggregateId(), event.getPayload());
-        when(outboxRepository.findTop20ByPublishedAtIsNullAndDeadLetteredAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(any()))
+        when(outboxRepository.findReadyToPublish(any()))
                 .thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(

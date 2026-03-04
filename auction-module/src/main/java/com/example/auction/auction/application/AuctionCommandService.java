@@ -39,7 +39,7 @@ public class AuctionCommandService {
 
     @Transactional
     public void close(UUID auctionId) {
-        Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         if (auction.status() != AuctionStatus.LIVE) throw new IllegalStateException("auction is not live");
 
         WinningBidLookupPort.WinningBid winningBid = winningBidLookup.findWinningBid(auctionId).orElse(null);
@@ -53,22 +53,41 @@ public class AuctionCommandService {
     @Transactional
     public int closeExpiredAuctions(OffsetDateTime now) {
         List<Auction> auctionsToClose = auctionRepository.findLiveEndingAtOrBefore(now);
+        int closedCount = 0;
         for (Auction auction : auctionsToClose) {
-            close(auction.id());
+            if (tryCloseIfLive(auction.id())) {
+                closedCount++;
+            }
         }
-        return auctionsToClose.size();
+        return closedCount;
+    }
+
+    private boolean tryCloseIfLive(UUID auctionId) {
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        if (auction.status() != AuctionStatus.LIVE) {
+            return false;
+        }
+
+        WinningBidLookupPort.WinningBid winningBid = winningBidLookup.findWinningBid(auctionId).orElse(null);
+        Auction closedAuction = auction.close(winningBid == null ? null : winningBid.bidId());
+        auctionRepository.save(closedAuction);
+        outboxPort.append("auction.closed", auctionId,
+                "{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":" +
+                        (winningBid == null ? "null" : "\"" + winningBid.bidId() + "\"") + "}");
+        return true;
     }
 
     @Transactional
     public void start(UUID auctionId) {
-        Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         auctionRepository.save(auction.start());
         outboxPort.append("auction.started", auctionId, "{\"auctionId\":\"" + auctionId + "\"}");
     }
 
     @Transactional
     public void settle(UUID auctionId) {
-        Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         Auction settledAuction = auction.settle();
         auctionRepository.save(settledAuction);
         outboxPort.append("auction.settled", auctionId,

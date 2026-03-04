@@ -22,7 +22,7 @@ public class OutboxEventJpaEntity {
     private OffsetDateTime publishedAt;
     @Column(nullable = false)
     private int publishAttempts;
-    @Column(nullable = false)
+    @Column
     private OffsetDateTime nextAttemptAt;
     @Column
     private OffsetDateTime deadLetteredAt;

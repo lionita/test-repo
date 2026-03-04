@@ -84,6 +84,52 @@ class AuctionControllerIntegrationTest {
     }
 
     @Test
+    void createAuction_withTitleLongerThan255_returnsBadRequest() throws Exception {
+        String title = "T".repeat(256);
+
+        mockMvc.perform(post("/api/auctions")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "%s",
+                                  "description": "Restored 1960s mechanical watch",
+                                  "reservePrice": 100.00,
+                                  "minIncrement": 5.00,
+                                  "startTime": "2026-01-01T10:00:00Z",
+                                  "endTime": "2026-01-01T12:00:00Z"
+                                }
+                                """.formatted(title)))
+                .andExpect(status().isBadRequest());
+
+        assertThat(auctionRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void createAuction_withDescriptionLongerThan4000_returnsBadRequest() throws Exception {
+        String description = "D".repeat(4001);
+
+        mockMvc.perform(post("/api/auctions")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Vintage Watch",
+                                  "description": "%s",
+                                  "reservePrice": 100.00,
+                                  "minIncrement": 5.00,
+                                  "startTime": "2026-01-01T10:00:00Z",
+                                  "endTime": "2026-01-01T12:00:00Z"
+                                }
+                                """.formatted(description)))
+                .andExpect(status().isBadRequest());
+
+        assertThat(auctionRepository.findAll()).isEmpty();
+    }
+
+    @Test
     void placeBid_afterAuctionStarted_acceptsBidAndPersistsIt() throws Exception {
         String createResponse = mockMvc.perform(post("/api/auctions")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
@@ -132,6 +178,51 @@ class AuctionControllerIntegrationTest {
                     assertThat(bid.getBidderId()).isEqualTo("bidder-1");
                 });
     }
+
+    @Test
+    void placeBid_withBidderDifferentFromJwtSubject_returnsBadRequest() throws Exception {
+        String createResponse = mockMvc.perform(post("/api/auctions")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Vintage Watch",
+                                  "description": "Restored 1960s mechanical watch",
+                                  "reservePrice": 100.00,
+                                  "minIncrement": 5.00,
+                                  "startTime": "2026-01-01T10:00:00Z",
+                                  "endTime": "2026-01-01T12:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID auctionId = UUID.fromString(objectMapper.readTree(createResponse).get("auctionId").asText());
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/start", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/bids", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("actual-bidder").claim("scope", "bid.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bidderId": "spoofed-bidder",
+                                  "amount": 105.00,
+                                  "idempotencyKey": "idem-mismatch"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+
+        assertThat(bidRepository.findAll()).isEmpty();
+    }
+
     @Test
     void settleAuction_transitionsToSettledAndWritesSettledEvent() throws Exception {
         String createResponse = mockMvc.perform(post("/api/auctions")
