@@ -52,8 +52,12 @@ class AuctionControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
+                                  "title": "Vintage Watch",
+                                  "description": "Restored 1960s mechanical watch",
                                   "reservePrice": 100.00,
-                                  "minIncrement": 5.00
+                                  "minIncrement": 5.00,
+                                  "startTime": "2026-01-01T10:00:00Z",
+                                  "endTime": "2026-01-01T12:00:00Z"
                                 }
                                 """))
                 .andExpect(status().isCreated())
@@ -82,8 +86,12 @@ class AuctionControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
+                                  "title": "Vintage Watch",
+                                  "description": "Restored 1960s mechanical watch",
                                   "reservePrice": 100.00,
-                                  "minIncrement": 5.00
+                                  "minIncrement": 5.00,
+                                  "startTime": "2026-01-01T10:00:00Z",
+                                  "endTime": "2026-01-01T12:00:00Z"
                                 }
                                 """))
                 .andExpect(status().isCreated())

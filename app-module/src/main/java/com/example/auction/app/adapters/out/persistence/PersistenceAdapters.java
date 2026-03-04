@@ -35,18 +35,43 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     public Auction save(Auction auction) {
         AuctionJpaEntity entity = new AuctionJpaEntity();
         entity.setId(auction.id());
+        entity.setTitle(auction.title());
+        entity.setDescription(auction.description());
         entity.setReservePrice(auction.reservePrice());
         entity.setMinIncrement(auction.minIncrement());
+        entity.setStartTime(auction.startTime());
+        entity.setEndTime(auction.endTime());
         entity.setStatus(auction.status());
         entity.setCurrentPrice(auction.currentPrice());
+        entity.setWinningBidId(auction.winningBidId());
         AuctionJpaEntity saved = auctionRepository.save(entity);
-        return new Auction(saved.getId(), saved.getReservePrice(), saved.getMinIncrement(), saved.getStatus(), saved.getCurrentPrice());
+        return new Auction(
+                saved.getId(),
+                saved.getTitle(),
+                saved.getDescription(),
+                saved.getReservePrice(),
+                saved.getMinIncrement(),
+                saved.getStartTime(),
+                saved.getEndTime(),
+                saved.getStatus(),
+                saved.getCurrentPrice(),
+                saved.getWinningBidId());
     }
 
     @Override
     public Optional<Auction> findById(UUID id) {
         return auctionRepository.findById(id)
-                .map(e -> new Auction(e.getId(), e.getReservePrice(), e.getMinIncrement(), e.getStatus(), e.getCurrentPrice()));
+                .map(e -> new Auction(
+                        e.getId(),
+                        e.getTitle(),
+                        e.getDescription(),
+                        e.getReservePrice(),
+                        e.getMinIncrement(),
+                        e.getStartTime(),
+                        e.getEndTime(),
+                        e.getStatus(),
+                        e.getCurrentPrice(),
+                        e.getWinningBidId()));
     }
 
     @Override

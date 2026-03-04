@@ -15,6 +15,7 @@ import com.example.auction.app.security.JwtSubjectValidator;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -34,7 +35,13 @@ public class AuctionController {
     public ResponseEntity<Map<String, UUID>> create(@AuthenticationPrincipal Jwt jwt,
                                                      @Valid @RequestBody CreateAuctionRequest request) {
         JwtSubjectValidator.requireSubject(jwt);
-        UUID id = auctionService.create(request.reservePrice(), request.minIncrement());
+        UUID id = auctionService.create(
+                request.title(),
+                request.description(),
+                request.reservePrice(),
+                request.minIncrement(),
+                request.startTime(),
+                request.endTime());
         return ResponseEntity.created(URI.create("/api/auctions/" + id)).body(Map.of("auctionId", id));
     }
 
@@ -56,8 +63,12 @@ public class AuctionController {
         return ResponseEntity.accepted().build();
     }
 
-    public record CreateAuctionRequest(@NotNull @DecimalMin("0.01") BigDecimal reservePrice,
-                                       @NotNull @DecimalMin("0.01") BigDecimal minIncrement) {}
+    public record CreateAuctionRequest(@NotBlank String title,
+                                       @NotBlank String description,
+                                       @NotNull @DecimalMin("0.01") BigDecimal reservePrice,
+                                       @NotNull @DecimalMin("0.01") BigDecimal minIncrement,
+                                       @NotNull OffsetDateTime startTime,
+                                       @NotNull OffsetDateTime endTime) {}
 
     public record PlaceBidRequest(@NotBlank String bidderId,
                                   @NotNull @DecimalMin("0.01") BigDecimal amount,

@@ -39,7 +39,17 @@ public class BiddingCommandService {
 
         long seq = bidRepository.nextSequence(auctionId);
         bidRepository.save(auctionId, bidderId, amount, idempotencyKey, seq);
-        auctionRepository.save(new Auction(auction.id(), auction.reservePrice(), auction.minIncrement(), auction.status(), amount));
+        auctionRepository.save(new Auction(
+                auction.id(),
+                auction.title(),
+                auction.description(),
+                auction.reservePrice(),
+                auction.minIncrement(),
+                auction.startTime(),
+                auction.endTime(),
+                auction.status(),
+                amount,
+                auction.winningBidId()));
         outboxPort.append("bid.placed", auctionId,
                 "{\"auctionId\":\"" + auctionId + "\",\"amount\":" + amount + ",\"sequence\":" + seq + "}");
     }
