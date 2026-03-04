@@ -4,7 +4,7 @@ import com.example.auction.auction.domain.Auction;
 import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
-import com.example.auction.bidding.ports.BidRepositoryPort;
+import com.example.auction.auction.ports.WinningBidLookupPort;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,12 +16,12 @@ import java.util.UUID;
 public class AuctionCommandService {
     private final AuctionRepositoryPort auctionRepository;
     private final OutboxPort outboxPort;
-    private final BidRepositoryPort bidRepository;
+    private final WinningBidLookupPort winningBidLookup;
 
-    public AuctionCommandService(AuctionRepositoryPort auctionRepository, OutboxPort outboxPort, BidRepositoryPort bidRepository) {
+    public AuctionCommandService(AuctionRepositoryPort auctionRepository, OutboxPort outboxPort, WinningBidLookupPort winningBidLookup) {
         this.auctionRepository = auctionRepository;
         this.outboxPort = outboxPort;
-        this.bidRepository = bidRepository;
+        this.winningBidLookup = winningBidLookup;
     }
 
     @Transactional
@@ -44,7 +44,7 @@ public class AuctionCommandService {
         Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         if (auction.status() != AuctionStatus.LIVE) throw new IllegalStateException("auction is not live");
 
-        BidRepositoryPort.WinningBid winningBid = bidRepository.findWinningBid(auctionId).orElse(null);
+        WinningBidLookupPort.WinningBid winningBid = winningBidLookup.findWinningBid(auctionId).orElse(null);
         Auction closedAuction = auction.close(winningBid == null ? null : winningBid.bidId());
         auctionRepository.save(closedAuction);
         outboxPort.append("auction.closed", auctionId,

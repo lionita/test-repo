@@ -4,7 +4,7 @@ import com.example.auction.auction.domain.Auction;
 import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
-import com.example.auction.bidding.ports.BidRepositoryPort;
+import com.example.auction.auction.ports.WinningBidLookupPort;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -67,7 +67,7 @@ class AuctionCommandServiceTest {
         auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
                 OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.LIVE,
                 new BigDecimal("130.00"), null));
-        bids.winningByAuction.put(auctionId, new BidRepositoryPort.WinningBid(bidId, new BigDecimal("130.00"), "bidder-1", 2));
+        bids.winningByAuction.put(auctionId, new WinningBidLookupPort.WinningBid(bidId, new BigDecimal("130.00"), "bidder-1", 2));
 
         service.close(auctionId);
 
@@ -97,14 +97,8 @@ class AuctionCommandServiceTest {
         }
     }
 
-    static class InMemBids implements BidRepositoryPort {
+    static class InMemBids implements WinningBidLookupPort {
         Map<UUID, WinningBid> winningByAuction = new HashMap<>();
-
-        public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) {}
-
-        public long nextSequence(UUID auctionId) {
-            return 1;
-        }
 
         public Optional<WinningBid> findWinningBid(UUID auctionId) {
             return Optional.ofNullable(winningByAuction.get(auctionId));
