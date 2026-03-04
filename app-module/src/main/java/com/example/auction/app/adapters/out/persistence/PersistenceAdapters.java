@@ -1,5 +1,6 @@
 package com.example.auction.app.adapters.out.persistence;
 
+import com.example.auction.app.adapters.out.eventbus.EventBusPublisher;
 import com.example.auction.app.adapters.out.realtime.RealtimePushAdapter;
 import com.example.auction.auction.domain.Auction;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
@@ -24,16 +25,33 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     private final SpringDataAuctionRepository auctionRepository;
     private final SpringDataBidRepository bidRepository;
     private final SpringDataOutboxRepository outboxRepository;
+    private final EventBusPublisher eventBusPublisher;
     private final RealtimePushAdapter realtimePushAdapter;
+    private final int maxPublishAttempts;
+    private final int retryDelaySeconds;
 
     public PersistenceAdapters(SpringDataAuctionRepository auctionRepository,
                                SpringDataBidRepository bidRepository,
                                SpringDataOutboxRepository outboxRepository,
+                               EventBusPublisher eventBusPublisher,
                                RealtimePushAdapter realtimePushAdapter) {
+        this(auctionRepository, bidRepository, outboxRepository, eventBusPublisher, realtimePushAdapter, 5, 5);
+    }
+
+    PersistenceAdapters(SpringDataAuctionRepository auctionRepository,
+                        SpringDataBidRepository bidRepository,
+                        SpringDataOutboxRepository outboxRepository,
+                        EventBusPublisher eventBusPublisher,
+                        RealtimePushAdapter realtimePushAdapter,
+                        int maxPublishAttempts,
+                        int retryDelaySeconds) {
         this.auctionRepository = auctionRepository;
         this.bidRepository = bidRepository;
         this.outboxRepository = outboxRepository;
+        this.eventBusPublisher = eventBusPublisher;
         this.realtimePushAdapter = realtimePushAdapter;
+        this.maxPublishAttempts = maxPublishAttempts;
+        this.retryDelaySeconds = retryDelaySeconds;
     }
 
     @Override
@@ -134,18 +152,35 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
         entity.setAggregateId(aggregateId);
         entity.setPayload(payload);
         entity.setCreatedAt(OffsetDateTime.now());
+        entity.setPublishAttempts(0);
+        entity.setNextAttemptAt(OffsetDateTime.now());
         outboxRepository.save(entity);
     }
 
     @Scheduled(fixedDelay = 3000)
     @Transactional
     public void publishPending() {
-        for (OutboxEventJpaEntity event : outboxRepository.findTop20ByPublishedAtIsNullOrderByCreatedAtAsc()) {
-            log.info("Publishing outbox event type={} aggregateId={}", event.getEventType(), event.getAggregateId());
-            if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
-                realtimePushAdapter.publish(event.getEventType(), event.getPayload());
+        OffsetDateTime now = OffsetDateTime.now();
+        for (OutboxEventJpaEntity event : outboxRepository.findTop20ByPublishedAtIsNullAndDeadLetteredAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(now)) {
+            try {
+                eventBusPublisher.publish(event.getEventType(), event.getAggregateId(), event.getPayload());
+                if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
+                    realtimePushAdapter.publish(event.getEventType(), event.getPayload());
+                }
+                event.setPublishedAt(OffsetDateTime.now());
+                event.setLastError(null);
+            } catch (RuntimeException ex) {
+                int attempts = event.getPublishAttempts() + 1;
+                event.setPublishAttempts(attempts);
+                event.setLastError(ex.getMessage());
+                if (attempts >= maxPublishAttempts) {
+                    event.setDeadLetteredAt(OffsetDateTime.now());
+                    log.error("Dead-lettered outbox event type={} aggregateId={} after {} attempts", event.getEventType(), event.getAggregateId(), attempts, ex);
+                } else {
+                    event.setNextAttemptAt(OffsetDateTime.now().plusSeconds((long) retryDelaySeconds * attempts));
+                    log.warn("Retrying outbox event type={} aggregateId={} attempt={}", event.getEventType(), event.getAggregateId(), attempts, ex);
+                }
             }
-            event.setPublishedAt(OffsetDateTime.now());
         }
     }
 }
