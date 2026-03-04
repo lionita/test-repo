@@ -1,5 +1,6 @@
 package com.example.auction.app.adapters.out.persistence;
 
+import com.example.auction.app.adapters.out.realtime.RealtimePushAdapter;
 import com.example.auction.auction.domain.Auction;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
@@ -23,13 +24,16 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     private final SpringDataAuctionRepository auctionRepository;
     private final SpringDataBidRepository bidRepository;
     private final SpringDataOutboxRepository outboxRepository;
+    private final RealtimePushAdapter realtimePushAdapter;
 
     public PersistenceAdapters(SpringDataAuctionRepository auctionRepository,
                                SpringDataBidRepository bidRepository,
-                               SpringDataOutboxRepository outboxRepository) {
+                               SpringDataOutboxRepository outboxRepository,
+                               RealtimePushAdapter realtimePushAdapter) {
         this.auctionRepository = auctionRepository;
         this.bidRepository = bidRepository;
         this.outboxRepository = outboxRepository;
+        this.realtimePushAdapter = realtimePushAdapter;
     }
 
     @Override
@@ -138,6 +142,9 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     public void publishPending() {
         for (OutboxEventJpaEntity event : outboxRepository.findTop20ByPublishedAtIsNullOrderByCreatedAtAsc()) {
             log.info("Publishing outbox event type={} aggregateId={}", event.getEventType(), event.getAggregateId());
+            if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
+                realtimePushAdapter.publish(event.getEventType(), event.getPayload());
+            }
             event.setPublishedAt(OffsetDateTime.now());
         }
     }
