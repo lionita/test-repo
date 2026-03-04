@@ -71,7 +71,7 @@ class AuctionControllerIntegrationTest {
                 .andExpect(status().isNoContent());
 
         assertThat(auctionRepository.findById(auctionId)).isPresent();
-        assertThat(auctionRepository.findById(auctionId).orElseThrow().getStatus().name()).isEqualTo("OPEN");
+        assertThat(auctionRepository.findById(auctionId).orElseThrow().getStatus().name()).isEqualTo("LIVE");
     }
 
     @Test
