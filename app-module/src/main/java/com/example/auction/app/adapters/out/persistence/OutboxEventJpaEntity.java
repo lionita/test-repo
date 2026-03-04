@@ -20,6 +20,14 @@ public class OutboxEventJpaEntity {
     private OffsetDateTime createdAt;
     @Column
     private OffsetDateTime publishedAt;
+    @Column(nullable = false)
+    private int publishAttempts;
+    @Column(nullable = false)
+    private OffsetDateTime nextAttemptAt;
+    @Column
+    private OffsetDateTime deadLetteredAt;
+    @Column(columnDefinition = "TEXT")
+    private String lastError;
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
@@ -33,4 +41,12 @@ public class OutboxEventJpaEntity {
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
     public OffsetDateTime getPublishedAt() { return publishedAt; }
     public void setPublishedAt(OffsetDateTime publishedAt) { this.publishedAt = publishedAt; }
+    public int getPublishAttempts() { return publishAttempts; }
+    public void setPublishAttempts(int publishAttempts) { this.publishAttempts = publishAttempts; }
+    public OffsetDateTime getNextAttemptAt() { return nextAttemptAt; }
+    public void setNextAttemptAt(OffsetDateTime nextAttemptAt) { this.nextAttemptAt = nextAttemptAt; }
+    public OffsetDateTime getDeadLetteredAt() { return deadLetteredAt; }
+    public void setDeadLetteredAt(OffsetDateTime deadLetteredAt) { this.deadLetteredAt = deadLetteredAt; }
+    public String getLastError() { return lastError; }
+    public void setLastError(String lastError) { this.lastError = lastError; }
 }
