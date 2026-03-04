@@ -37,14 +37,15 @@ public class BiddingCommandService {
         if (amount.signum() <= 0) throw new IllegalArgumentException("amount must be > 0");
         if (idempotencyKey == null || idempotencyKey.isBlank()) throw new IllegalArgumentException("idempotencyKey is required");
 
-        Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         if (auction.status() != AuctionStatus.LIVE) throw new IllegalStateException("auction is not live");
-        if (!bidderPurchasingAuthorizationPort.hasSufficientAuthorization(bidderId, amount)) {
-            throw new IllegalStateException("bidder has insufficient purchasing authorization");
-        }
 
         BigDecimal minimum = auction.currentPrice() == null ? auction.reservePrice() : auction.currentPrice().add(auction.minIncrement());
         if (amount.compareTo(minimum) < 0) throw new IllegalArgumentException("bid must be >= " + minimum);
+
+        if (!bidderPurchasingAuthorizationPort.hasSufficientAuthorization(bidderId, amount)) {
+            throw new IllegalStateException("bidder has insufficient purchasing authorization");
+        }
 
         long seq = bidRepository.nextSequence(auctionId);
         bidRepository.save(auctionId, bidderId, amount, idempotencyKey, seq);

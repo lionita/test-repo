@@ -6,9 +6,10 @@ public final class JwtSubjectValidator {
     private JwtSubjectValidator() {
     }
 
-    public static void requireSubject(Jwt jwt) {
+    public static String requireSubject(Jwt jwt) {
         if (jwt == null || jwt.getSubject() == null || jwt.getSubject().isBlank()) {
             throw new IllegalArgumentException("jwt subject (sub) is required");
         }
+        return jwt.getSubject();
     }
 }

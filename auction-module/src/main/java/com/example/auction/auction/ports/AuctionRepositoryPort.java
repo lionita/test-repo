@@ -10,5 +10,8 @@ import java.util.UUID;
 public interface AuctionRepositoryPort {
     Auction save(Auction auction);
     Optional<Auction> findById(UUID id);
+    default Optional<Auction> findByIdForUpdate(UUID id) {
+        return findById(id);
+    }
     List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold);
 }

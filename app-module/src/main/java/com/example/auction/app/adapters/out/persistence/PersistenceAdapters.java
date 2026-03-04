@@ -99,6 +99,21 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
                         e.getWinningBidId()));
     }
 
+    @Override
+    public Optional<Auction> findByIdForUpdate(UUID id) {
+        return auctionRepository.findByIdForUpdate(id)
+                .map(e -> new Auction(
+                        e.getId(),
+                        e.getTitle(),
+                        e.getDescription(),
+                        e.getReservePrice(),
+                        e.getMinIncrement(),
+                        e.getStartTime(),
+                        e.getEndTime(),
+                        e.getStatus(),
+                        e.getCurrentPrice(),
+                        e.getWinningBidId()));
+    }
 
     @Override
     public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) {
@@ -163,12 +178,16 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     @Transactional
     public void publishPending() {
         OffsetDateTime now = OffsetDateTime.now();
-        for (OutboxEventJpaEntity event : outboxRepository.findTop20ByPublishedAtIsNullAndDeadLetteredAtIsNullAndNextAttemptAtLessThanEqualOrderByCreatedAtAsc(now)) {
+        for (OutboxEventJpaEntity event : outboxRepository.findReadyToPublish(now)) {
+            if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
+                try {
+                    realtimePushAdapter.publish(event.getEventType(), event.getPayload());
+                } catch (RuntimeException ex) {
+                    log.warn("Realtime fanout failed for event type={} aggregateId={}", event.getEventType(), event.getAggregateId(), ex);
+                }
+            }
             try {
                 eventBusPublisher.publish(event.getEventType(), event.getAggregateId(), event.getPayload());
-                if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
-                    realtimePushAdapter.publish(event.getEventType(), event.getPayload());
-                }
                 event.setPublishedAt(OffsetDateTime.now());
                 event.setLastError(null);
             } catch (RuntimeException ex) {

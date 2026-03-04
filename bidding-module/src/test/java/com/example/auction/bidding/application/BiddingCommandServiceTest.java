@@ -44,6 +44,7 @@ class BiddingCommandServiceTest {
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         assertThrows(IllegalArgumentException.class,
                 () -> service.placeBid(id, "u1", new BigDecimal("99.99"), "k1"));
+        assertEquals(0, bidderAuthorization.calls);
     }
 
     @Test
@@ -89,6 +90,26 @@ class BiddingCommandServiceTest {
     }
 
     @Test
+    void rejectsBidWhenLockedAuctionStateIsAlreadyClosed() {
+        var auctions = new LockAwareInMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
+        UUID id = UUID.randomUUID();
+        auctions.findByIdSnapshot = new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"),
+                OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null);
+        auctions.findByIdForUpdateSnapshot = new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"),
+                OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.CLOSED, null, null);
+
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
+
+        assertThrows(IllegalStateException.class,
+                () -> service.placeBid(id, "u1", new BigDecimal("100.00"), "k1"));
+        assertTrue(bids.seq.isEmpty());
+        assertTrue(outbox.events.isEmpty());
+    }
+
+    @Test
     void rejectsBidWhenBidderHasInsufficientAuthorization() {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
@@ -109,6 +130,33 @@ class BiddingCommandServiceTest {
         public Optional<Auction> findById(UUID id) { return Optional.ofNullable(data.get(id)); }
         public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) { return List.of(); }
     }
+    static class LockAwareInMemAuctions implements AuctionRepositoryPort {
+        Auction findByIdSnapshot;
+        Auction findByIdForUpdateSnapshot;
+
+        @Override
+        public Auction save(Auction auction) {
+            findByIdSnapshot = auction;
+            findByIdForUpdateSnapshot = auction;
+            return auction;
+        }
+
+        @Override
+        public Optional<Auction> findById(UUID id) {
+            return Optional.ofNullable(findByIdSnapshot);
+        }
+
+        @Override
+        public Optional<Auction> findByIdForUpdate(UUID id) {
+            return Optional.ofNullable(findByIdForUpdateSnapshot);
+        }
+
+        @Override
+        public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) {
+            return List.of();
+        }
+    }
+
     static class InMemBids implements BidRepositoryPort {
         Map<UUID, Long> seq = new HashMap<>();
         public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) { seq.put(auctionId, sequenceNumber); }
@@ -122,9 +170,11 @@ class BiddingCommandServiceTest {
 
     static class InMemBidderAuthorization implements BidderPurchasingAuthorizationPort {
         boolean authorized = true;
+        int calls = 0;
 
         @Override
         public boolean hasSufficientAuthorization(String bidderId, BigDecimal amount) {
+            calls++;
             return authorized;
         }
     }
