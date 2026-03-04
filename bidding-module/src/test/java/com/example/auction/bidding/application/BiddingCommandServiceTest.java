@@ -8,6 +8,7 @@ import com.example.auction.bidding.ports.BidRepositoryPort;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,7 +20,7 @@ class BiddingCommandServiceTest {
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
         UUID id = UUID.randomUUID();
-        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox);
         service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
@@ -35,7 +36,7 @@ class BiddingCommandServiceTest {
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
         UUID id = UUID.randomUUID();
-        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox);
         assertThrows(IllegalArgumentException.class,
@@ -48,7 +49,7 @@ class BiddingCommandServiceTest {
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
         UUID id = UUID.randomUUID();
-        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox);
         assertThrows(IllegalArgumentException.class,
@@ -61,7 +62,7 @@ class BiddingCommandServiceTest {
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
         UUID id = UUID.randomUUID();
-        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox);
         assertThrows(IllegalArgumentException.class,
@@ -74,7 +75,7 @@ class BiddingCommandServiceTest {
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
         UUID id = UUID.randomUUID();
-        auctions.save(new Auction(id, new BigDecimal("100.00"), new BigDecimal("10.00"), AuctionStatus.LIVE, null));
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox);
         assertThrows(IllegalArgumentException.class,
