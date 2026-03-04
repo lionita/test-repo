@@ -5,6 +5,7 @@ import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
 import com.example.auction.bidding.ports.BidRepositoryPort;
+import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -19,10 +20,11 @@ class BiddingCommandServiceTest {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
-        var service = new BiddingCommandService(auctions, bids, outbox);
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
 
         assertEquals(new BigDecimal("100.00"), auctions.findById(id).orElseThrow().currentPrice());
@@ -35,10 +37,11 @@ class BiddingCommandServiceTest {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
-        var service = new BiddingCommandService(auctions, bids, outbox);
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         assertThrows(IllegalArgumentException.class,
                 () -> service.placeBid(id, "u1", new BigDecimal("99.99"), "k1"));
     }
@@ -48,10 +51,11 @@ class BiddingCommandServiceTest {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
-        var service = new BiddingCommandService(auctions, bids, outbox);
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         assertThrows(IllegalArgumentException.class,
                 () -> service.placeBid(id, "   ", new BigDecimal("100.00"), "k1"));
     }
@@ -61,10 +65,11 @@ class BiddingCommandServiceTest {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
-        var service = new BiddingCommandService(auctions, bids, outbox);
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         assertThrows(IllegalArgumentException.class,
                 () -> service.placeBid(id, "u1", BigDecimal.ZERO, "k1"));
     }
@@ -74,12 +79,28 @@ class BiddingCommandServiceTest {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
-        var service = new BiddingCommandService(auctions, bids, outbox);
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         assertThrows(IllegalArgumentException.class,
                 () -> service.placeBid(id, "u1", new BigDecimal("100.00"), ""));
+    }
+
+    @Test
+    void rejectsBidWhenBidderHasInsufficientAuthorization() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
+        bidderAuthorization.authorized = false;
+        UUID id = UUID.randomUUID();
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
+
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
+        assertThrows(IllegalStateException.class,
+                () -> service.placeBid(id, "u1", new BigDecimal("100.00"), "k1"));
     }
 
     static class InMemAuctions implements AuctionRepositoryPort {
@@ -97,5 +118,14 @@ class BiddingCommandServiceTest {
     static class InMemOutbox implements OutboxPort {
         List<String> events = new ArrayList<>();
         public void append(String eventType, UUID aggregateId, String payload) { events.add(eventType); }
+    }
+
+    static class InMemBidderAuthorization implements BidderPurchasingAuthorizationPort {
+        boolean authorized = true;
+
+        @Override
+        public boolean hasSufficientAuthorization(String bidderId, BigDecimal amount) {
+            return authorized;
+        }
     }
 }

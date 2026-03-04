@@ -6,6 +6,7 @@ import com.example.auction.auction.ports.OutboxPort;
 import com.example.auction.auction.ports.WinningBidLookupPort;
 import com.example.auction.bidding.application.BiddingCommandService;
 import com.example.auction.bidding.ports.BidRepositoryPort;
+import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -21,7 +22,8 @@ public class UseCaseConfig {
     @Bean
     BiddingCommandService biddingCommandService(AuctionRepositoryPort auctionRepositoryPort,
                                                 BidRepositoryPort bidRepositoryPort,
-                                                OutboxPort outboxPort) {
-        return new BiddingCommandService(auctionRepositoryPort, bidRepositoryPort, outboxPort);
+                                                OutboxPort outboxPort,
+                                                BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort) {
+        return new BiddingCommandService(auctionRepositoryPort, bidRepositoryPort, outboxPort, bidderPurchasingAuthorizationPort);
     }
 }
