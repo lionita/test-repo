@@ -13,6 +13,12 @@ Multi-module Spring Boot reference implementation using Java 22, Spring Boot 3.5
 - `POST /api/auctions/{id}/bids` requires `scope` claim containing `bid.write`.
 - JWT must include a non-empty `sub` claim.
 
+## OpenAPI documentation
+- Source spec file: `docs/api.yaml`
+- Swagger UI: `http://localhost:8080/swagger-ui.html`
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`
+- Both OpenAPI endpoints are publicly accessible; business API endpoints still require JWT.
+
 ## Sample SQL
 - `sql/sample-data.sql` contains sample inserts for auctions, bids, and outbox events.
 

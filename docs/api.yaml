@@ -1,0 +1,189 @@
+openapi: 3.0.3
+info:
+  title: Auction Service API
+  version: "1.0.0"
+  description: |
+    OpenAPI specification for the auction platform REST API.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security:
+  - bearerAuth: []
+paths:
+  /api/auctions:
+    post:
+      summary: Create an auction
+      operationId: createAuction
+      tags: [Auctions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuctionRequest'
+      responses:
+        '201':
+          description: Auction created
+          headers:
+            Location:
+              description: URI of the created auction
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAuctionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auctions/{auctionId}/start:
+    post:
+      summary: Start an auction
+      operationId: startAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction started
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/close:
+    post:
+      summary: Close an auction
+      operationId: closeAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction closed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/settle:
+    post:
+      summary: Settle an auction
+      operationId: settleAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction settled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/bids:
+    post:
+      summary: Place a bid
+      operationId: placeBid
+      tags: [Bids]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceBidRequest'
+      responses:
+        '202':
+          description: Bid accepted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AuctionId:
+      name: auctionId
+      in: path
+      required: true
+      description: Auction identifier
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Invalid request payload or business validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid JWT
+    Conflict:
+      description: Business state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    CreateAuctionRequest:
+      type: object
+      required: [title, description, reservePrice, minIncrement, startTime, endTime]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 4000
+        reservePrice:
+          type: number
+          format: double
+          minimum: 0.01
+        minIncrement:
+          type: number
+          format: double
+          minimum: 0.01
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+    CreateAuctionResponse:
+      type: object
+      required: [auctionId]
+      properties:
+        auctionId:
+          type: string
+          format: uuid
+    PlaceBidRequest:
+      type: object
+      required: [bidderId, amount, idempotencyKey]
+      properties:
+        bidderId:
+          type: string
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+        idempotencyKey:
+          type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
