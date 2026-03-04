@@ -5,6 +5,7 @@ import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
 import com.example.auction.bidding.ports.BidRepositoryPort;
+import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,11 +17,16 @@ public class BiddingCommandService {
     private final AuctionRepositoryPort auctionRepository;
     private final BidRepositoryPort bidRepository;
     private final OutboxPort outboxPort;
+    private final BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort;
 
-    public BiddingCommandService(AuctionRepositoryPort auctionRepository, BidRepositoryPort bidRepository, OutboxPort outboxPort) {
+    public BiddingCommandService(AuctionRepositoryPort auctionRepository,
+                                 BidRepositoryPort bidRepository,
+                                 OutboxPort outboxPort,
+                                 BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort) {
         this.auctionRepository = auctionRepository;
         this.bidRepository = bidRepository;
         this.outboxPort = outboxPort;
+        this.bidderPurchasingAuthorizationPort = bidderPurchasingAuthorizationPort;
     }
 
     @Transactional
@@ -33,6 +39,9 @@ public class BiddingCommandService {
 
         Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         if (auction.status() != AuctionStatus.LIVE) throw new IllegalStateException("auction is not live");
+        if (!bidderPurchasingAuthorizationPort.hasSufficientAuthorization(bidderId, amount)) {
+            throw new IllegalStateException("bidder has insufficient purchasing authorization");
+        }
 
         BigDecimal minimum = auction.currentPrice() == null ? auction.reservePrice() : auction.currentPrice().add(auction.minIncrement());
         if (amount.compareTo(minimum) < 0) throw new IllegalArgumentException("bid must be >= " + minimum);
