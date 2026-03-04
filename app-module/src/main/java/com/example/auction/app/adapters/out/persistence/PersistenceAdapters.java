@@ -9,6 +9,7 @@ import com.example.auction.bidding.ports.BidRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +31,7 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     private final int maxPublishAttempts;
     private final int retryDelaySeconds;
 
+    @Autowired
     public PersistenceAdapters(SpringDataAuctionRepository auctionRepository,
                                SpringDataBidRepository bidRepository,
                                SpringDataOutboxRepository outboxRepository,
