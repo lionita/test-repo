@@ -62,6 +62,14 @@ public class AuctionController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{auctionId}/settle")
+    @PreAuthorize("hasAuthority('SCOPE_auction.write')")
+    public ResponseEntity<Void> settle(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID auctionId) {
+        JwtSubjectValidator.requireSubject(jwt);
+        auctionService.settle(auctionId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{auctionId}/bids")
     @PreAuthorize("hasAuthority('SCOPE_bid.write')")
     public ResponseEntity<Void> placeBid(@AuthenticationPrincipal Jwt jwt,

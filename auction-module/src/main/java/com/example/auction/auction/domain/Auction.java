@@ -25,4 +25,11 @@ public record Auction(
         if (status != AuctionStatus.LIVE) throw new IllegalStateException("auction can only close from LIVE");
         return new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.CLOSED, currentPrice, selectedWinningBidId);
     }
+
+    public Auction settle() {
+        if (status != AuctionStatus.CLOSED) throw new IllegalStateException("auction can only settle from CLOSED");
+        if (winningBidId == null) throw new IllegalStateException("cannot settle auction without winning bid");
+        return new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.SETTLED, currentPrice, winningBidId);
+    }
+
 }
