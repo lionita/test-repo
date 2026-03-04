@@ -11,8 +11,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class UseCaseConfig {
     @Bean
-    AuctionCommandService auctionCommandService(AuctionRepositoryPort auctionRepositoryPort, OutboxPort outboxPort) {
-        return new AuctionCommandService(auctionRepositoryPort, outboxPort);
+    AuctionCommandService auctionCommandService(AuctionRepositoryPort auctionRepositoryPort, OutboxPort outboxPort, BidRepositoryPort bidRepositoryPort) {
+        return new AuctionCommandService(auctionRepositoryPort, outboxPort, bidRepositoryPort);
     }
 
     @Bean

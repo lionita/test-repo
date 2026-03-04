@@ -20,4 +20,9 @@ public record Auction(
         if (status != AuctionStatus.SCHEDULED) throw new IllegalStateException("auction can only start from SCHEDULED");
         return new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.LIVE, currentPrice, winningBidId);
     }
+
+    public Auction close(UUID selectedWinningBidId) {
+        if (status != AuctionStatus.LIVE) throw new IllegalStateException("auction can only close from LIVE");
+        return new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.CLOSED, currentPrice, selectedWinningBidId);
+    }
 }

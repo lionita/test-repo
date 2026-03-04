@@ -53,6 +53,15 @@ public class AuctionController {
         return ResponseEntity.noContent().build();
     }
 
+
+    @PostMapping("/{auctionId}/close")
+    @PreAuthorize("hasAuthority('SCOPE_auction.write')")
+    public ResponseEntity<Void> close(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID auctionId) {
+        JwtSubjectValidator.requireSubject(jwt);
+        auctionService.close(auctionId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{auctionId}/bids")
     @PreAuthorize("hasAuthority('SCOPE_bid.write')")
     public ResponseEntity<Void> placeBid(@AuthenticationPrincipal Jwt jwt,

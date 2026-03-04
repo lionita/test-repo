@@ -2,6 +2,7 @@ package com.example.auction.app.adapters.in.web;
 
 import com.example.auction.app.adapters.out.persistence.SpringDataAuctionRepository;
 import com.example.auction.app.adapters.out.persistence.SpringDataBidRepository;
+import com.example.auction.app.adapters.out.persistence.SpringDataOutboxRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,8 +39,12 @@ class AuctionControllerIntegrationTest {
     @Autowired
     private SpringDataBidRepository bidRepository;
 
+    @Autowired
+    private SpringDataOutboxRepository outboxRepository;
+
     @BeforeEach
     void setUp() {
+        outboxRepository.deleteAll();
         bidRepository.deleteAll();
         auctionRepository.deleteAll();
     }
@@ -127,4 +132,57 @@ class AuctionControllerIntegrationTest {
                     assertThat(bid.getBidderId()).isEqualTo("bidder-1");
                 });
     }
+    @Test
+    void closeAuction_selectsWinnerAndWritesClosedEvent() throws Exception {
+        String createResponse = mockMvc.perform(post("/api/auctions")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Vintage Watch",
+                                  "description": "Restored 1960s mechanical watch",
+                                  "reservePrice": 100.00,
+                                  "minIncrement": 5.00,
+                                  "startTime": "2026-01-01T10:00:00Z",
+                                  "endTime": "2026-01-01T12:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        UUID auctionId = UUID.fromString(objectMapper.readTree(createResponse).get("auctionId").asText());
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/start", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/bids", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("bidder-1").claim("scope", "bid.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bidderId": "bidder-1",
+                                  "amount": 105.00,
+                                  "idempotencyKey": "idem-1"
+                                }
+                                """))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/close", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
+                .andExpect(status().isNoContent());
+
+        var closedAuction = auctionRepository.findById(auctionId).orElseThrow();
+        assertThat(closedAuction.getStatus().name()).isEqualTo("CLOSED");
+        assertThat(closedAuction.getWinningBidId()).isNotNull();
+        assertThat(outboxRepository.findAll())
+                .anySatisfy(event -> assertThat(event.getEventType()).isEqualTo("auction.closed"));
+    }
+
 }
