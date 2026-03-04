@@ -33,6 +33,25 @@ class BiddingCommandServiceTest {
     }
 
     @Test
+    void returnsWithoutSideEffectsWhenIdempotencyKeyAlreadyExists() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
+        UUID id = UUID.randomUUID();
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
+        bids.existingKeys.add(id + ":k1");
+
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
+        service.placeBid(id, "u1", new BigDecimal("90.00"), "k1");
+
+        assertTrue(bids.savedBids.isEmpty());
+        assertEquals(0, bidderAuthorization.calls);
+        assertTrue(outbox.events.isEmpty());
+        assertNull(auctions.findById(id).orElseThrow().currentPrice());
+    }
+
+    @Test
     void rejectsBelowMinimumBid() {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
@@ -159,7 +178,19 @@ class BiddingCommandServiceTest {
 
     static class InMemBids implements BidRepositoryPort {
         Map<UUID, Long> seq = new HashMap<>();
-        public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) { seq.put(auctionId, sequenceNumber); }
+        Set<String> existingKeys = new HashSet<>();
+        List<String> savedBids = new ArrayList<>();
+
+        public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) {
+            seq.put(auctionId, sequenceNumber);
+            existingKeys.add(auctionId + ":" + idempotencyKey);
+            savedBids.add(auctionId + ":" + idempotencyKey);
+        }
+
+        public boolean existsByAuctionIdAndIdempotencyKey(UUID auctionId, String idempotencyKey) {
+            return existingKeys.contains(auctionId + ":" + idempotencyKey);
+        }
+
         public long nextSequence(UUID auctionId) { return seq.getOrDefault(auctionId, 0L) + 1; }
         public Optional<WinningBid> findWinningBid(UUID auctionId) { return Optional.empty(); }
     }

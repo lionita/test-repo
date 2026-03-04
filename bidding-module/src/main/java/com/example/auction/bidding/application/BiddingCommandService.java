@@ -40,6 +40,10 @@ public class BiddingCommandService {
         Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         if (auction.status() != AuctionStatus.LIVE) throw new IllegalStateException("auction is not live");
 
+        if (bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, idempotencyKey)) {
+            return;
+        }
+
         BigDecimal minimum = auction.currentPrice() == null ? auction.reservePrice() : auction.currentPrice().add(auction.minIncrement());
         if (amount.compareTo(minimum) < 0) throw new IllegalArgumentException("bid must be >= " + minimum);
 

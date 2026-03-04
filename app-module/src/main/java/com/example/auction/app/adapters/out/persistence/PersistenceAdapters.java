@@ -148,6 +148,11 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
 
 
     @Override
+    public boolean existsByAuctionIdAndIdempotencyKey(UUID auctionId, String idempotencyKey) {
+        return bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, idempotencyKey);
+    }
+
+    @Override
     public Optional<WinningBid> findWinningBid(UUID auctionId) {
         return bidRepository.findFirstByAuctionIdOrderByAmountDescSequenceNumberAsc(auctionId)
                 .map(bid -> new WinningBid(bid.getId(), bid.getAmount(), bid.getBidderId(), bid.getSequenceNumber()));
