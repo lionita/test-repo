@@ -133,7 +133,7 @@ class AuctionControllerIntegrationTest {
                 });
     }
     @Test
-    void closeAuction_selectsWinnerAndWritesClosedEvent() throws Exception {
+    void settleAuction_transitionsToSettledAndWritesSettledEvent() throws Exception {
         String createResponse = mockMvc.perform(post("/api/auctions")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
@@ -178,11 +178,18 @@ class AuctionControllerIntegrationTest {
                                 .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
                 .andExpect(status().isNoContent());
 
-        var closedAuction = auctionRepository.findById(auctionId).orElseThrow();
-        assertThat(closedAuction.getStatus().name()).isEqualTo("CLOSED");
-        assertThat(closedAuction.getWinningBidId()).isNotNull();
+        mockMvc.perform(post("/api/auctions/{auctionId}/settle", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
+                .andExpect(status().isNoContent());
+
+        var settledAuction = auctionRepository.findById(auctionId).orElseThrow();
+        assertThat(settledAuction.getStatus().name()).isEqualTo("SETTLED");
+        assertThat(settledAuction.getWinningBidId()).isNotNull();
         assertThat(outboxRepository.findAll())
                 .anySatisfy(event -> assertThat(event.getEventType()).isEqualTo("auction.closed"));
+        assertThat(outboxRepository.findAll())
+                .anySatisfy(event -> assertThat(event.getEventType()).isEqualTo("auction.settled"));
     }
 
 }

@@ -6,6 +6,8 @@ This document compares the implemented codebase against the target capabilities 
 
 - Auction creation with `title`, `description`, `reservePrice`, `minIncrement`, `startTime`, and `endTime`, initial status `SCHEDULED`, and `auction.created` outbox event. 
 - Manual auction start (`/api/auctions/{id}/start`) transitioning `SCHEDULED -> LIVE` and writing `auction.started` outbox event.
+- Manual auction close (`/api/auctions/{id}/close`) picks the winning bid (if any) and writes `auction.closed`.
+- Manual auction settlement (`/api/auctions/{id}/settle`) transitions `CLOSED -> SETTLED` and writes `auction.settled`.
 - Bid placement (`/api/auctions/{id}/bids`) with validation for:
   - live auction status,
   - positive bid amount,
@@ -20,8 +22,7 @@ This document compares the implemented codebase against the target capabilities 
 ### 1) Auction lifecycle is incomplete
 - No `end_time` on auctions and no scheduled auto-close at end time.
 - No close operation/use case (`auction.closed` workflow) and no winner selection.
-- No settlement step or `settled` transition/event handling.
-- Current domain only models start transition; no explicit close/settle/cancel transitions.
+- Current domain has start/close/settle transitions, but still no cancel transition.
 
 ### 2) Auction model still has partial parity gaps
 - Item/media metadata beyond title/description is still not modeled.
@@ -52,7 +53,6 @@ This document compares the implemented codebase against the target capabilities 
 ## Suggested Next Milestone (MVP completion order)
 1. Extend auction schema/domain with `title`, `description`, `startTime`, `endTime`, `winningBidId`.
 2. Add close-auction use case (scheduler + manual endpoint) with winner selection and `auction.closed` event.
-3. Add settlement workflow and `auction.settled` event.
-4. Add bidder purchasing authorization port + implementation.
-5. Add real-time push adapter (SSE/WebSocket) triggered from `bid.placed`/`auction.closed`.
-6. Replace outbox log stub with real event-bus publisher and retries/dead-letter handling.
+3. Add bidder purchasing authorization port + implementation.
+4. Add real-time push adapter (SSE/WebSocket) triggered from `bid.placed`/`auction.closed`/`auction.settled`.
+5. Replace outbox log stub with real event-bus publisher and retries/dead-letter handling.

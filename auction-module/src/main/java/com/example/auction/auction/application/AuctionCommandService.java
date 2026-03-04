@@ -5,7 +5,6 @@ import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
 import com.example.auction.auction.ports.WinningBidLookupPort;
-
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -38,7 +37,6 @@ public class AuctionCommandService {
         return id;
     }
 
-
     @Transactional
     public void close(UUID auctionId) {
         Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
@@ -66,5 +64,14 @@ public class AuctionCommandService {
         Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         auctionRepository.save(auction.start());
         outboxPort.append("auction.started", auctionId, "{\"auctionId\":\"" + auctionId + "\"}");
+    }
+
+    @Transactional
+    public void settle(UUID auctionId) {
+        Auction auction = auctionRepository.findById(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        Auction settledAuction = auction.settle();
+        auctionRepository.save(settledAuction);
+        outboxPort.append("auction.settled", auctionId,
+                "{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":\"" + settledAuction.winningBidId() + "\"}");
     }
 }
