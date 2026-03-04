@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -74,6 +75,25 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
                         e.getWinningBidId()));
     }
 
+
+    @Override
+    public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) {
+        return auctionRepository.findLiveEndingAtOrBefore(threshold)
+                .stream()
+                .map(e -> new Auction(
+                        e.getId(),
+                        e.getTitle(),
+                        e.getDescription(),
+                        e.getReservePrice(),
+                        e.getMinIncrement(),
+                        e.getStartTime(),
+                        e.getEndTime(),
+                        e.getStatus(),
+                        e.getCurrentPrice(),
+                        e.getWinningBidId()))
+                .toList();
+    }
+
     @Override
     public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) {
         BidJpaEntity entity = new BidJpaEntity();
@@ -85,6 +105,13 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
         entity.setSequenceNumber(sequenceNumber);
         entity.setCreatedAt(OffsetDateTime.now());
         bidRepository.save(entity);
+    }
+
+
+    @Override
+    public Optional<WinningBid> findWinningBid(UUID auctionId) {
+        return bidRepository.findFirstByAuctionIdOrderByAmountDescSequenceNumberAsc(auctionId)
+                .map(bid -> new WinningBid(bid.getId(), bid.getAmount(), bid.getBidderId(), bid.getSequenceNumber()));
     }
 
     @Override

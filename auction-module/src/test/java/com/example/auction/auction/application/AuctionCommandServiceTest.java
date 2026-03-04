@@ -1,8 +1,10 @@
 package com.example.auction.auction.application;
 
 import com.example.auction.auction.domain.Auction;
+import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
+import com.example.auction.bidding.ports.BidRepositoryPort;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -17,7 +19,7 @@ class AuctionCommandServiceTest {
     void createStoresExtendedAuctionFields() {
         var auctions = new InMemAuctions();
         var outbox = new InMemOutbox();
-        var service = new AuctionCommandService(auctions, outbox);
+        var service = new AuctionCommandService(auctions, outbox, new InMemBids());
 
         OffsetDateTime start = OffsetDateTime.parse("2026-01-01T10:00:00Z");
         OffsetDateTime end = OffsetDateTime.parse("2026-01-01T12:00:00Z");
@@ -41,7 +43,7 @@ class AuctionCommandServiceTest {
 
     @Test
     void createRejectsInvalidTimeWindow() {
-        var service = new AuctionCommandService(new InMemAuctions(), new InMemOutbox());
+        var service = new AuctionCommandService(new InMemAuctions(), new InMemOutbox(), new InMemBids());
         OffsetDateTime start = OffsetDateTime.parse("2026-01-01T10:00:00Z");
 
         assertThrows(IllegalArgumentException.class, () -> service.create(
@@ -51,6 +53,28 @@ class AuctionCommandServiceTest {
                 new BigDecimal("5.00"),
                 start,
                 start));
+    }
+
+    @Test
+    void closeSelectsWinnerAndWritesClosedEvent() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        var service = new AuctionCommandService(auctions, outbox, bids);
+
+        UUID auctionId = UUID.randomUUID();
+        UUID bidId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.LIVE,
+                new BigDecimal("130.00"), null));
+        bids.winningByAuction.put(auctionId, new BidRepositoryPort.WinningBid(bidId, new BigDecimal("130.00"), "bidder-1", 2));
+
+        service.close(auctionId);
+
+        Auction closed = auctions.findById(auctionId).orElseThrow();
+        assertEquals(AuctionStatus.CLOSED, closed.status());
+        assertEquals(bidId, closed.winningBidId());
+        assertTrue(outbox.events.contains("auction.closed"));
     }
 
     static class InMemAuctions implements AuctionRepositoryPort {
@@ -63,6 +87,27 @@ class AuctionCommandServiceTest {
 
         public Optional<Auction> findById(UUID id) {
             return Optional.ofNullable(data.get(id));
+        }
+
+        public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) {
+            return data.values().stream()
+                    .filter(auction -> auction.status() == AuctionStatus.LIVE)
+                    .filter(auction -> !auction.endTime().isAfter(threshold))
+                    .toList();
+        }
+    }
+
+    static class InMemBids implements BidRepositoryPort {
+        Map<UUID, WinningBid> winningByAuction = new HashMap<>();
+
+        public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) {}
+
+        public long nextSequence(UUID auctionId) {
+            return 1;
+        }
+
+        public Optional<WinningBid> findWinningBid(UUID auctionId) {
+            return Optional.ofNullable(winningByAuction.get(auctionId));
         }
     }
 

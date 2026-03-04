@@ -86,11 +86,13 @@ class BiddingCommandServiceTest {
         Map<UUID, Auction> data = new HashMap<>();
         public Auction save(Auction auction) { data.put(auction.id(), auction); return auction; }
         public Optional<Auction> findById(UUID id) { return Optional.ofNullable(data.get(id)); }
+        public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) { return List.of(); }
     }
     static class InMemBids implements BidRepositoryPort {
         Map<UUID, Long> seq = new HashMap<>();
         public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) { seq.put(auctionId, sequenceNumber); }
         public long nextSequence(UUID auctionId) { return seq.getOrDefault(auctionId, 0L) + 1; }
+        public Optional<WinningBid> findWinningBid(UUID auctionId) { return Optional.empty(); }
     }
     static class InMemOutbox implements OutboxPort {
         List<String> events = new ArrayList<>();
