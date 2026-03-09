@@ -16,3 +16,7 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: https://example-issuer.local/
+
+auction:
+  bidders:
+    block-duration-months: 2

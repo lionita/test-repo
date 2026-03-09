@@ -26,7 +26,8 @@ public class AuctionController {
     private final AuctionCommandService auctionService;
     private final BiddingCommandService biddingService;
 
-    public AuctionController(AuctionCommandService auctionService, BiddingCommandService biddingService) {
+    public AuctionController(AuctionCommandService auctionService,
+                             BiddingCommandService biddingService) {
         this.auctionService = auctionService;
         this.biddingService = biddingService;
     }
@@ -94,4 +95,5 @@ public class AuctionController {
     public record PlaceBidRequest(@NotBlank String bidderId,
                                   @NotNull @DecimalMin("0.01") BigDecimal amount,
                                   @NotBlank String idempotencyKey) {}
+
 }
