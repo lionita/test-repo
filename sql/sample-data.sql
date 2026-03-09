@@ -16,6 +16,15 @@ VALUES (
 )
 ON CONFLICT (id) DO NOTHING;
 
+
+INSERT INTO bidders (id, first_name, last_name, email, national_id, purchasing_authorization_limit, created_at, deleted_at, blocked_until)
+VALUES
+ ('alice', 'Alice', 'Anderson', 'alice@example.com', 'NID-ALICE-001', 1000.00, NOW() - INTERVAL '3 days', NULL, NULL),
+ ('bob', 'Bob', 'Brown', 'bob@example.com', 'NID-BOB-001', 2000.00, NOW() - INTERVAL '2 days', NULL, NULL),
+ ('charlie', 'Charlie', 'Clark', 'charlie@example.com', 'NID-CHARLIE-001', 500.00, NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 hour', NULL),
+ ('david', 'David', 'Dunn', 'david@example.com', 'NID-DAVID-001', 700.00, NOW() - INTERVAL '12 hours', NULL, NOW() + INTERVAL '2 months')
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO bids (id, auction_id, bidder_id, amount, sequence_number, idempotency_key, created_at)
 VALUES
  ('22222222-2222-2222-2222-222222222221', '11111111-1111-1111-1111-111111111111', 'alice', 100.00, 1, 'alice-1', NOW()),

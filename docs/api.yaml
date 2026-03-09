@@ -10,6 +10,98 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /api/bidders/onboarding:
+    post:
+      summary: Onboard a bidder
+      description: Requires `admin.write` scope.
+      operationId: onboardBidder
+      tags: [Bidders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardBidderRequest'
+      responses:
+        '201':
+          description: Bidder onboarded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardBidderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/bidders/{bidderId}:
+    put:
+      summary: Update a bidder
+      description: Requires `admin.write` scope.
+      operationId: updateBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBidderRequest'
+      responses:
+        '200':
+          description: Bidder updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardBidderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      summary: Soft delete a bidder
+      description: Requires `admin.write` scope.
+      operationId: deleteBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      responses:
+        '204':
+          description: Bidder soft-deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/bidders/{bidderId}/block:
+    post:
+      summary: Block a bidder
+      description: Requires `admin.write` scope. Blocks bidder for configured duration (default: 2 months).
+      operationId: blockBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      responses:
+        '204':
+          description: Bidder blocked
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/bidders/{bidderId}/unblock:
+    post:
+      summary: Manually unblock a bidder
+      description: Requires `admin.write` scope.
+      operationId: unblockBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      responses:
+        '204':
+          description: Bidder unblocked
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/auctions:
     post:
       summary: Create an auction
@@ -122,6 +214,13 @@ components:
       schema:
         type: string
         format: uuid
+    BidderId:
+      name: bidderId
+      in: path
+      required: true
+      description: Bidder identifier
+      schema:
+        type: string
   responses:
     BadRequest:
       description: Invalid request payload or business validation error
@@ -169,6 +268,75 @@ components:
         auctionId:
           type: string
           format: uuid
+    OnboardBidderRequest:
+      type: object
+      required: [firstName, lastName, email, nationalId, purchasingAuthorizationLimit]
+      properties:
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        nationalId:
+          type: string
+          maxLength: 50
+        purchasingAuthorizationLimit:
+          type: number
+          format: double
+          minimum: 0.01
+    UpdateBidderRequest:
+      type: object
+      required: [firstName, lastName, email, nationalId, purchasingAuthorizationLimit]
+      properties:
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        nationalId:
+          type: string
+          maxLength: 50
+        purchasingAuthorizationLimit:
+          type: number
+          format: double
+          minimum: 0.01
+    OnboardBidderResponse:
+      type: object
+      required: [bidderId, firstName, lastName, email, nationalId, purchasingAuthorizationLimit]
+      properties:
+        bidderId:
+          type: string
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        nationalId:
+          type: string
+          maxLength: 50
+        purchasingAuthorizationLimit:
+          type: number
+          format: double
+          minimum: 0.01
+        blockedUntil:
+          type: string
+          format: date-time
+          nullable: true
     PlaceBidRequest:
       type: object
       required: [bidderId, amount, idempotencyKey]
