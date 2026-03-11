@@ -8,6 +8,7 @@ import com.example.auction.auction.ports.WinningBidLookupPort;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -16,11 +17,22 @@ public class AuctionCommandService {
     private final AuctionRepositoryPort auctionRepository;
     private final OutboxPort outboxPort;
     private final WinningBidLookupPort winningBidLookup;
+    private final Clock clock;
 
-    public AuctionCommandService(AuctionRepositoryPort auctionRepository, OutboxPort outboxPort, WinningBidLookupPort winningBidLookup) {
+    public AuctionCommandService(AuctionRepositoryPort auctionRepository,
+                                 OutboxPort outboxPort,
+                                 WinningBidLookupPort winningBidLookup) {
+        this(auctionRepository, outboxPort, winningBidLookup, Clock.systemUTC());
+    }
+
+    public AuctionCommandService(AuctionRepositoryPort auctionRepository,
+                                 OutboxPort outboxPort,
+                                 WinningBidLookupPort winningBidLookup,
+                                 Clock clock) {
         this.auctionRepository = auctionRepository;
         this.outboxPort = outboxPort;
         this.winningBidLookup = winningBidLookup;
+        this.clock = clock;
     }
 
     @Transactional
@@ -41,6 +53,9 @@ public class AuctionCommandService {
     public void close(UUID auctionId) {
         Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         if (auction.status() != AuctionStatus.LIVE) throw new IllegalStateException("auction is not live");
+        if (OffsetDateTime.now(clock).isBefore(auction.endTime())) {
+            throw new IllegalStateException("auction cannot be closed before endTime");
+        }
 
         WinningBidLookupPort.WinningBid winningBid = winningBidLookup.findWinningBid(auctionId).orElse(null);
         Auction closedAuction = auction.close(winningBid == null ? null : winningBid.bidId());
@@ -81,6 +96,9 @@ public class AuctionCommandService {
     @Transactional
     public void start(UUID auctionId) {
         Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        if (OffsetDateTime.now(clock).isBefore(auction.startTime())) {
+            throw new IllegalStateException("auction cannot be started before startTime");
+        }
         auctionRepository.save(auction.start());
         outboxPort.append("auction.started", auctionId, "{\"auctionId\":\"" + auctionId + "\"}");
     }

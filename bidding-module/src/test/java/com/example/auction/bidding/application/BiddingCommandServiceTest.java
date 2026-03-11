@@ -9,7 +9,10 @@ import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -141,6 +144,27 @@ class BiddingCommandServiceTest {
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         assertThrows(IllegalStateException.class,
                 () -> service.placeBid(id, "u1", new BigDecimal("100.00"), "k1"));
+    }
+
+
+    @Test
+    void rejectsBidAfterAuctionEndTime() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
+        UUID id = UUID.randomUUID();
+        OffsetDateTime start = OffsetDateTime.parse("2026-01-01T10:00:00Z");
+        OffsetDateTime end = OffsetDateTime.parse("2026-01-01T12:00:00Z");
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), start, end, AuctionStatus.LIVE, null, null));
+
+        Clock afterEnd = Clock.fixed(Instant.parse("2026-01-01T12:00:01Z"), ZoneOffset.UTC);
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization, afterEnd);
+
+        assertThrows(IllegalStateException.class,
+                () -> service.placeBid(id, "u1", new BigDecimal("100.00"), "k1"));
+        assertTrue(bids.savedBids.isEmpty());
+        assertTrue(outbox.events.isEmpty());
     }
 
     static class InMemAuctions implements AuctionRepositoryPort {

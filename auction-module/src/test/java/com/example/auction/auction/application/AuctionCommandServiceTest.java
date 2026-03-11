@@ -8,7 +8,10 @@ import com.example.auction.auction.ports.WinningBidLookupPort;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -77,6 +80,42 @@ class AuctionCommandServiceTest {
         assertTrue(outbox.events.contains("auction.closed"));
     }
 
+
+    @Test
+    void startRejectsWhenBeforeScheduledStartTime() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.SCHEDULED,
+                null, null));
+
+        Clock beforeStart = Clock.fixed(Instant.parse("2026-01-01T09:59:00Z"), ZoneOffset.UTC);
+        var service = new AuctionCommandService(auctions, outbox, bids, beforeStart);
+
+        assertThrows(IllegalStateException.class, () -> service.start(auctionId));
+        assertTrue(outbox.events.isEmpty());
+        assertEquals(AuctionStatus.SCHEDULED, auctions.findById(auctionId).orElseThrow().status());
+    }
+
+    @Test
+    void closeRejectsWhenBeforeScheduledEndTime() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.LIVE,
+                new BigDecimal("130.00"), null));
+
+        Clock beforeEnd = Clock.fixed(Instant.parse("2026-01-01T11:59:00Z"), ZoneOffset.UTC);
+        var service = new AuctionCommandService(auctions, outbox, bids, beforeEnd);
+
+        assertThrows(IllegalStateException.class, () -> service.close(auctionId));
+        assertTrue(outbox.events.isEmpty());
+        assertEquals(AuctionStatus.LIVE, auctions.findById(auctionId).orElseThrow().status());
+    }
 
 
     @Test
