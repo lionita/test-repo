@@ -16,6 +16,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -117,7 +118,9 @@ class AuctionControllerIntegrationTest {
 
     @Test
     void onboardBidder_thenPlaceBid_afterAuctionStarted_acceptsBidAndPersistsIt() throws Exception {
-        UUID auctionId = createAuction();
+        UUID auctionId = createAuction(
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
         startAuction(auctionId);
         String bidderId = onboardBidder("500.00");
 
@@ -242,7 +245,9 @@ class AuctionControllerIntegrationTest {
 
     @Test
     void blockBidder_preventsBidding_untilUnblocked() throws Exception {
-        UUID auctionId = createAuction();
+        UUID auctionId = createAuction(
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
         startAuction(auctionId);
         String bidderId = onboardBidder("500.00");
 
@@ -319,7 +324,9 @@ class AuctionControllerIntegrationTest {
 
     @Test
     void settleAuction_transitionsToSettledAndWritesSettledEvent() throws Exception {
-        UUID auctionId = createAuction();
+        UUID auctionId = createAuction(
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
         startAuction(auctionId);
         String bidderId = onboardBidder("500.00");
 
@@ -335,6 +342,10 @@ class AuctionControllerIntegrationTest {
                                 }
                                 """.formatted(bidderId)))
                 .andExpect(status().isAccepted());
+
+        var auction = auctionRepository.findById(auctionId).orElseThrow();
+        auction.setEndTime(OffsetDateTime.now().minusSeconds(1));
+        auctionRepository.save(auction);
 
         mockMvc.perform(post("/api/auctions/{auctionId}/close", auctionId)
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
@@ -356,6 +367,12 @@ class AuctionControllerIntegrationTest {
     }
 
     private UUID createAuction() throws Exception {
+        return createAuction(
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"),
+                OffsetDateTime.parse("2026-01-01T12:00:00Z"));
+    }
+
+    private UUID createAuction(OffsetDateTime startTime, OffsetDateTime endTime) throws Exception {
         String createResponse = mockMvc.perform(post("/api/auctions")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
@@ -366,10 +383,10 @@ class AuctionControllerIntegrationTest {
                                   "description": "Restored 1960s mechanical watch",
                                   "reservePrice": 100.00,
                                   "minIncrement": 5.00,
-                                  "startTime": "2026-01-01T10:00:00Z",
-                                  "endTime": "2026-01-01T12:00:00Z"
+                                  "startTime": "%s",
+                                  "endTime": "%s"
                                 }
-                                """))
+                                """.formatted(startTime, endTime)))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.startsWith("/api/auctions/")))
                 .andReturn()

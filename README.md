@@ -1,6 +1,6 @@
 # test-repo
 
-Multi-module Spring Boot reference implementation using Java 22, Spring Boot 3.5.9, PostgreSQL, REST, Spring Data JPA, Hexagonal-ish layering, outbox pattern, and JWT-based Spring Security checks.
+Multi-module Spring Boot reference implementation using Java 22, Spring Boot 4.0.0, PostgreSQL, REST, Spring Data JPA, Hexagonal-ish layering, outbox pattern, and JWT-based Spring Security checks.
 
 ## Modules
 - `auction-module`: auction aggregate and auction lifecycle use cases.

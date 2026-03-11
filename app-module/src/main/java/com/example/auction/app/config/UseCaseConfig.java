@@ -10,20 +10,31 @@ import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Clock;
+
 @Configuration
 public class UseCaseConfig {
     @Bean
-    AuctionCommandService auctionCommandService(AuctionRepositoryPort auctionRepositoryPort, OutboxPort outboxPort, BidRepositoryPort bidRepositoryPort) {
+    Clock appClock() {
+        return Clock.systemUTC();
+    }
+
+    @Bean
+    AuctionCommandService auctionCommandService(AuctionRepositoryPort auctionRepositoryPort,
+                                                OutboxPort outboxPort,
+                                                BidRepositoryPort bidRepositoryPort,
+                                                Clock appClock) {
         WinningBidLookupPort winningBidLookup = auctionId -> bidRepositoryPort.findWinningBid(auctionId)
                 .map(w -> new WinningBidLookupPort.WinningBid(w.bidId(), w.amount(), w.bidderId(), w.sequenceNumber()));
-        return new AuctionCommandService(auctionRepositoryPort, outboxPort, winningBidLookup);
+        return new AuctionCommandService(auctionRepositoryPort, outboxPort, winningBidLookup, appClock);
     }
 
     @Bean
     BiddingCommandService biddingCommandService(AuctionRepositoryPort auctionRepositoryPort,
                                                 BidRepositoryPort bidRepositoryPort,
                                                 OutboxPort outboxPort,
-                                                BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort) {
-        return new BiddingCommandService(auctionRepositoryPort, bidRepositoryPort, outboxPort, bidderPurchasingAuthorizationPort);
+                                                BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort,
+                                                Clock appClock) {
+        return new BiddingCommandService(auctionRepositoryPort, bidRepositoryPort, outboxPort, bidderPurchasingAuthorizationPort, appClock);
     }
 }

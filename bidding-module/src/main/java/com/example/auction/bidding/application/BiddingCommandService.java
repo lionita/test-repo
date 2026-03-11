@@ -10,6 +10,8 @@ import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.OffsetDateTime;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -18,15 +20,25 @@ public class BiddingCommandService {
     private final BidRepositoryPort bidRepository;
     private final OutboxPort outboxPort;
     private final BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort;
+    private final Clock clock;
 
     public BiddingCommandService(AuctionRepositoryPort auctionRepository,
                                  BidRepositoryPort bidRepository,
                                  OutboxPort outboxPort,
                                  BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort) {
+        this(auctionRepository, bidRepository, outboxPort, bidderPurchasingAuthorizationPort, Clock.systemUTC());
+    }
+
+    public BiddingCommandService(AuctionRepositoryPort auctionRepository,
+                                 BidRepositoryPort bidRepository,
+                                 OutboxPort outboxPort,
+                                 BidderPurchasingAuthorizationPort bidderPurchasingAuthorizationPort,
+                                 Clock clock) {
         this.auctionRepository = auctionRepository;
         this.bidRepository = bidRepository;
         this.outboxPort = outboxPort;
         this.bidderPurchasingAuthorizationPort = bidderPurchasingAuthorizationPort;
+        this.clock = clock;
     }
 
     @Transactional
@@ -39,6 +51,9 @@ public class BiddingCommandService {
 
         Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         if (auction.status() != AuctionStatus.LIVE) throw new IllegalStateException("auction is not live");
+        if (OffsetDateTime.now(clock).isAfter(auction.endTime())) {
+            throw new IllegalStateException("auction has already ended");
+        }
 
         if (bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, idempotencyKey)) {
             return;
