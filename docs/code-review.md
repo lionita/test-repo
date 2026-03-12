@@ -1,26 +1,27 @@
 # Code Review Findings
 
-## 1) Build is blocked by an unresolved Spring Boot parent version (HIGH)
-- `app-module/pom.xml` pins the parent to `org.springframework.boot:spring-boot-starter-parent:4.0.0`.
-- In this environment, Maven cannot resolve that parent version, which prevents the whole reactor from being built or tested.
-- Reproduce: `mvn test -q` fails during model resolution before any module tests run.
+## 1) `create(...)` accepts invalid pricing inputs that can crash bid placement (HIGH)
+- `AuctionCommandService.create(...)` validates title/description/start/end times, but it does **not** validate `reservePrice` or `minIncrement` for null/positive values.
+- `BiddingCommandService.placeBid(...)` later computes the minimum acceptable bid using `auction.reservePrice()` and `auction.minIncrement()`, which can trigger runtime failures when either value is null.
+- Impact: auctions can be created in an invalid state and then fail unpredictably when the first bid is placed.
 
 **Recommendation**
-- Pin to a resolvable Spring Boot release and keep the README version in sync.
-- Consider adding CI validation that fails fast on dependency resolution drift.
+- In `create(...)`, enforce `reservePrice != null`, `reservePrice >= 0`, `minIncrement != null`, and `minIncrement > 0`.
+- Add unit tests covering invalid pricing values.
 
-## 2) Bids can be accepted after auction end time until scheduler closes the auction (HIGH)
-- `BiddingCommandService.placeBid(...)` only checks `auction.status() == LIVE`; it does not validate `now <= auction.endTime()`.
-- If scheduler execution is delayed, a `LIVE` auction may still accept late bids after the configured end time.
-
-**Recommendation**
-- Add a time check inside `placeBid(...)` using an injected clock/time source.
-- Optionally auto-close (or reject with a clear error) when `now` is past `endTime`.
-
-## 3) Auction start/close commands do not enforce schedule boundaries (MEDIUM)
-- `AuctionCommandService.start(...)` allows start regardless of `startTime`.
-- `AuctionCommandService.close(...)` allows close regardless of `endTime`.
-- This enables operational mistakes (starting too early / closing too early) unless all callers enforce policy externally.
+## 2) `auction.settled` event payload encodes null winning bid as a string (MEDIUM)
+- `AuctionCommandService.settle(...)` publishes JSON with `"winningBidId":"` + `settledAuction.winningBidId()` + `"`.
+- If `winningBidId` is null (or if upstream guards regress), payload becomes `"winningBidId":"null"` instead of JSON null.
+- Impact: downstream consumers can mis-handle settlement events because string `"null"` is not equivalent to null.
 
 **Recommendation**
-- Enforce temporal invariants in application/domain logic (`start` not before `startTime`, `close` not before `endTime`) or document intentional manual override semantics explicitly.
+- Build the payload so `winningBidId` is emitted as either JSON null or a quoted UUID.
+- Add a unit test that asserts the exact outbox payload for settlement.
+
+## 3) Full reactor build/test is blocked in this environment due to Maven Central 403 (INFO)
+- Running `mvn test -q` fails before tests execute because parent POM resolution for Spring Boot is denied from Maven Central in this environment.
+- This appears to be an environment/network access issue rather than an application logic defect.
+
+**Recommendation**
+- Re-run in CI or a developer environment with Maven Central access.
+- Optionally cache/host required dependencies internally to make builds deterministic in restricted networks.

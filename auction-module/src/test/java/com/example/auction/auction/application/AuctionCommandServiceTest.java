@@ -59,6 +59,45 @@ class AuctionCommandServiceTest {
     }
 
     @Test
+    void createRejectsInvalidPricingValues() {
+        var service = new AuctionCommandService(new InMemAuctions(), new InMemOutbox(), new InMemBids());
+        OffsetDateTime start = OffsetDateTime.parse("2026-01-01T10:00:00Z");
+        OffsetDateTime end = OffsetDateTime.parse("2026-01-01T12:00:00Z");
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                null,
+                new BigDecimal("5.00"),
+                start,
+                end));
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                new BigDecimal("-0.01"),
+                new BigDecimal("5.00"),
+                start,
+                end));
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                new BigDecimal("100.00"),
+                null,
+                start,
+                end));
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                start,
+                end));
+    }
+
+    @Test
     void closeSelectsWinnerAndWritesClosedEvent() {
         var auctions = new InMemAuctions();
         var outbox = new InMemOutbox();
@@ -164,6 +203,12 @@ class AuctionCommandServiceTest {
         assertEquals(AuctionStatus.SETTLED, settled.status());
         assertEquals(bidId, settled.winningBidId());
         assertTrue(outbox.events.contains("auction.settled"));
+
+        var settledEvent = outbox.entries.stream()
+                .filter(entry -> "auction.settled".equals(entry.eventType()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":\"" + bidId + "\"}", settledEvent.payload());
     }
 
     static class InMemAuctions implements AuctionRepositoryPort {
@@ -206,9 +251,13 @@ class AuctionCommandServiceTest {
 
     static class InMemOutbox implements OutboxPort {
         List<String> events = new ArrayList<>();
+        List<OutboxEntry> entries = new ArrayList<>();
 
         public void append(String eventType, UUID aggregateId, String payload) {
             events.add(eventType);
+            entries.add(new OutboxEntry(eventType, payload));
         }
+
+        record OutboxEntry(String eventType, String payload) {}
     }
 }
