@@ -9,13 +9,14 @@ import java.util.List;
 import java.util.UUID;
 
 public interface SpringDataOutboxRepository extends JpaRepository<OutboxEventJpaEntity, UUID> {
-    @Query("""
-            select e
-            from OutboxEventJpaEntity e
-            where e.publishedAt is null
-              and e.deadLetteredAt is null
-              and (e.nextAttemptAt is null or e.nextAttemptAt <= :now)
-            order by e.createdAt asc
-            """)
-    List<OutboxEventJpaEntity> findReadyToPublish(@Param("now") OffsetDateTime now);
+    @Query(value = """
+            select *
+            from outbox_events
+            where published_at is null
+              and dead_lettered_at is null
+              and (next_attempt_at is null or next_attempt_at <= :now)
+            order by created_at asc
+            for update skip locked
+            """, nativeQuery = true)
+    List<OutboxEventJpaEntity> claimReadyToPublish(@Param("now") OffsetDateTime now);
 }

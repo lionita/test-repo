@@ -183,7 +183,7 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     @Transactional
     public void publishPending() {
         OffsetDateTime now = OffsetDateTime.now();
-        for (OutboxEventJpaEntity event : outboxRepository.findReadyToPublish(now)) {
+        for (OutboxEventJpaEntity event : outboxRepository.claimReadyToPublish(now)) {
             if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
                 try {
                     realtimePushAdapter.publish(event.getEventType(), event.getPayload());
