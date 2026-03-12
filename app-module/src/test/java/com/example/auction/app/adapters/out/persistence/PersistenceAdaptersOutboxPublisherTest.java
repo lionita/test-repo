@@ -27,7 +27,7 @@ class PersistenceAdaptersOutboxPublisherTest {
         RealtimePushAdapter realtimePushAdapter = mock(RealtimePushAdapter.class);
 
         OutboxEventJpaEntity event = pendingEvent("bid.placed");
-        when(outboxRepository.findReadyToPublish(any()))
+        when(outboxRepository.claimReadyToPublish(any()))
                 .thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(
@@ -60,7 +60,7 @@ class PersistenceAdaptersOutboxPublisherTest {
         doThrow(new IllegalStateException("broker unavailable"))
                 .when(eventBusPublisher)
                 .publish(event.getEventType(), event.getAggregateId(), event.getPayload());
-        when(outboxRepository.findReadyToPublish(any()))
+        when(outboxRepository.claimReadyToPublish(any()))
                 .thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(
@@ -95,7 +95,7 @@ class PersistenceAdaptersOutboxPublisherTest {
         doThrow(new IllegalStateException("broker unavailable"))
                 .when(eventBusPublisher)
                 .publish(event.getEventType(), event.getAggregateId(), event.getPayload());
-        when(outboxRepository.findReadyToPublish(any()))
+        when(outboxRepository.claimReadyToPublish(any()))
                 .thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(
@@ -124,7 +124,7 @@ class PersistenceAdaptersOutboxPublisherTest {
 
         OutboxEventJpaEntity event = pendingEvent("auction.created");
         event.setNextAttemptAt(null);
-        when(outboxRepository.findReadyToPublish(any())).thenReturn(List.of(event));
+        when(outboxRepository.claimReadyToPublish(any())).thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(
                 auctionRepository,
@@ -154,7 +154,7 @@ class PersistenceAdaptersOutboxPublisherTest {
         doThrow(new IllegalStateException("still down"))
                 .when(eventBusPublisher)
                 .publish(event.getEventType(), event.getAggregateId(), event.getPayload());
-        when(outboxRepository.findReadyToPublish(any()))
+        when(outboxRepository.claimReadyToPublish(any()))
                 .thenReturn(List.of(event));
 
         PersistenceAdapters adapters = new PersistenceAdapters(
