@@ -39,6 +39,10 @@ public class AuctionCommandService {
     public UUID create(String title, String description, BigDecimal reservePrice, BigDecimal minIncrement, OffsetDateTime startTime, OffsetDateTime endTime) {
         if (title == null || title.isBlank()) throw new IllegalArgumentException("title is required");
         if (description == null || description.isBlank()) throw new IllegalArgumentException("description is required");
+        if (reservePrice == null) throw new IllegalArgumentException("reservePrice is required");
+        if (reservePrice.signum() < 0) throw new IllegalArgumentException("reservePrice must be >= 0");
+        if (minIncrement == null) throw new IllegalArgumentException("minIncrement is required");
+        if (minIncrement.signum() <= 0) throw new IllegalArgumentException("minIncrement must be > 0");
         if (startTime == null) throw new IllegalArgumentException("startTime is required");
         if (endTime == null) throw new IllegalArgumentException("endTime is required");
         if (!endTime.isAfter(startTime)) throw new IllegalArgumentException("endTime must be after startTime");
@@ -108,7 +112,10 @@ public class AuctionCommandService {
         Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
         Auction settledAuction = auction.settle();
         auctionRepository.save(settledAuction);
+        String winningBidIdJsonValue = settledAuction.winningBidId() == null
+                ? "null"
+                : "\"" + settledAuction.winningBidId() + "\"";
         outboxPort.append("auction.settled", auctionId,
-                "{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":\"" + settledAuction.winningBidId() + "\"}");
+                "{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":" + winningBidIdJsonValue + "}");
     }
 }

@@ -59,6 +59,45 @@ class AuctionCommandServiceTest {
     }
 
     @Test
+    void createRejectsInvalidPricingValues() {
+        var service = new AuctionCommandService(new InMemAuctions(), new InMemOutbox(), new InMemBids());
+        OffsetDateTime start = OffsetDateTime.parse("2026-01-01T10:00:00Z");
+        OffsetDateTime end = OffsetDateTime.parse("2026-01-01T12:00:00Z");
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                null,
+                new BigDecimal("5.00"),
+                start,
+                end));
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                new BigDecimal("-0.01"),
+                new BigDecimal("5.00"),
+                start,
+                end));
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                new BigDecimal("100.00"),
+                null,
+                start,
+                end));
+
+        assertThrows(IllegalArgumentException.class, () -> service.create(
+                "Vintage Watch",
+                "Restored 1960s mechanical watch",
+                new BigDecimal("100.00"),
+                BigDecimal.ZERO,
+                start,
+                end));
+    }
+
+    @Test
     void closeSelectsWinnerAndWritesClosedEvent() {
         var auctions = new InMemAuctions();
         var outbox = new InMemOutbox();
@@ -80,6 +119,85 @@ class AuctionCommandServiceTest {
         assertTrue(outbox.events.contains("auction.closed"));
     }
 
+    @Test
+    void closeWithoutWinnerWritesNullWinningBidInPayload() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        UUID auctionId = UUID.randomUUID();
+        Clock afterEnd = Clock.fixed(Instant.parse("2026-01-01T12:01:00Z"), ZoneOffset.UTC);
+        var service = new AuctionCommandService(auctions, outbox, bids, afterEnd);
+
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.LIVE,
+                new BigDecimal("130.00"), null));
+
+        service.close(auctionId);
+
+        Auction closed = auctions.findById(auctionId).orElseThrow();
+        assertEquals(AuctionStatus.CLOSED, closed.status());
+        assertNull(closed.winningBidId());
+        var closedEvent = outbox.entries.stream()
+                .filter(entry -> "auction.closed".equals(entry.eventType()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":null}", closedEvent.payload());
+    }
+
+    @Test
+    void closeRejectsWhenAuctionIsNotLive() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        UUID auctionId = UUID.randomUUID();
+        Clock afterEnd = Clock.fixed(Instant.parse("2026-01-01T12:01:00Z"), ZoneOffset.UTC);
+        var service = new AuctionCommandService(auctions, outbox, bids, afterEnd);
+
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.SCHEDULED,
+                null, null));
+
+        assertThrows(IllegalStateException.class, () -> service.close(auctionId));
+        assertTrue(outbox.events.isEmpty());
+    }
+
+    @Test
+    void closeRejectsWhenAuctionNotFound() {
+        var service = new AuctionCommandService(new InMemAuctions(), new InMemOutbox(), new InMemBids());
+
+        assertThrows(IllegalArgumentException.class, () -> service.close(UUID.randomUUID()));
+    }
+
+    @Test
+    void startTransitionsAuctionAndWritesStartedEvent() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.SCHEDULED,
+                null, null));
+
+        Clock atStart = Clock.fixed(Instant.parse("2026-01-01T10:00:00Z"), ZoneOffset.UTC);
+        var service = new AuctionCommandService(auctions, outbox, bids, atStart);
+
+        service.start(auctionId);
+
+        Auction started = auctions.findById(auctionId).orElseThrow();
+        assertEquals(AuctionStatus.LIVE, started.status());
+        var startedEvent = outbox.entries.stream()
+                .filter(entry -> "auction.started".equals(entry.eventType()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("{\"auctionId\":\"" + auctionId + "\"}", startedEvent.payload());
+    }
+
+    @Test
+    void startRejectsWhenAuctionNotFound() {
+        var service = new AuctionCommandService(new InMemAuctions(), new InMemOutbox(), new InMemBids());
+
+        assertThrows(IllegalArgumentException.class, () -> service.start(UUID.randomUUID()));
+    }
 
     @Test
     void startRejectsWhenBeforeScheduledStartTime() {
@@ -164,6 +282,12 @@ class AuctionCommandServiceTest {
         assertEquals(AuctionStatus.SETTLED, settled.status());
         assertEquals(bidId, settled.winningBidId());
         assertTrue(outbox.events.contains("auction.settled"));
+
+        var settledEvent = outbox.entries.stream()
+                .filter(entry -> "auction.settled".equals(entry.eventType()))
+                .findFirst()
+                .orElseThrow();
+        assertEquals("{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":\"" + bidId + "\"}", settledEvent.payload());
     }
 
     static class InMemAuctions implements AuctionRepositoryPort {
@@ -206,9 +330,13 @@ class AuctionCommandServiceTest {
 
     static class InMemOutbox implements OutboxPort {
         List<String> events = new ArrayList<>();
+        List<OutboxEntry> entries = new ArrayList<>();
 
         public void append(String eventType, UUID aggregateId, String payload) {
             events.add(eventType);
+            entries.add(new OutboxEntry(eventType, payload));
         }
+
+        record OutboxEntry(String eventType, String payload) {}
     }
 }
