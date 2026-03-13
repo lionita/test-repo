@@ -51,8 +51,8 @@ class SpringDataRepositoriesTest {
         bidRepository.saveAll(List.of(first, second, third));
 
         assertThat(bidRepository.maxSequenceByAuctionId(auctionId)).isEqualTo(3);
-        assertThat(bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, "idempotency-2")).isTrue();
-        assertThat(bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, "missing")).isFalse();
+        assertThat(bidRepository.existsByBidderIdAndIdempotencyKey("bidder-2", "idempotency-2")).isTrue();
+        assertThat(bidRepository.existsByBidderIdAndIdempotencyKey("bidder-2", "missing")).isFalse();
 
         BidJpaEntity highestBid = bidRepository.findFirstByAuctionIdOrderByAmountDescSequenceNumberAsc(auctionId)
                 .orElseThrow();

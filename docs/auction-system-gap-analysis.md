@@ -4,55 +4,64 @@ This document compares the implemented codebase against the target capabilities 
 
 ## Implemented Today
 
-- Auction creation with `title`, `description`, `reservePrice`, `minIncrement`, `startTime`, and `endTime`, initial status `SCHEDULED`, and `auction.created` outbox event. 
-- Manual auction start (`/api/auctions/{id}/start`) transitioning `SCHEDULED -> LIVE` and writing `auction.started` outbox event.
-- Manual auction close (`/api/auctions/{id}/close`) picks the winning bid (if any) and writes `auction.closed`.
-- Manual auction settlement (`/api/auctions/{id}/settle`) transitions `CLOSED -> SETTLED` and writes `auction.settled`.
-- Bid placement (`/api/auctions/{id}/bids`) with validation for:
-  - live auction status,
-  - positive bid amount,
-  - non-blank bidder/idempotency fields,
-  - minimum acceptable amount based on reserve or current + increment.
-- Bid sequencing and DB constraints for `(auction_id, sequence_number)` and `(auction_id, idempotency_key)`.
-- Transactional outbox table with scheduled publisher stub (logs/marks published).
-- JWT scope and `sub`-presence checks on API endpoints.
+- Auction lifecycle endpoints are implemented:
+  - create (`POST /api/auctions`)
+  - start (`POST /api/auctions/{auctionId}/start`)
+  - close (`POST /api/auctions/{auctionId}/close`)
+  - settle (`POST /api/auctions/{auctionId}/settle`)
+- Scheduled auto-close is implemented via `AuctionClosingScheduler` using `closeExpiredAuctions(...)`.
+- Bid placement is implemented with transactional locking semantics and validation:
+  - auction must be `LIVE`
+  - auction must not be past `endTime`
+  - amount must satisfy reserve/current+min increment rule
+  - idempotency key required
+  - bidder authorization/blocked/deleted checks via `BidderPurchasingAuthorizationPort`
+- Bid sequencing and constraints are implemented:
+  - unique `(auction_id, sequence_number)`
+  - unique `(auction_id, idempotency_key)`
+- Bidder onboarding/admin endpoints are implemented:
+  - onboard, update, soft-delete, block, unblock
+- Realtime push exists using SSE endpoint (`/api/realtime/events`) and in-process fan-out.
+- Transactional outbox flow exists:
+  - outbox append on domain actions
+  - scheduled claim-and-publish loop
+  - retries + dead-letter timestamp fields
+- JWT resource-server security is implemented with scope checks and required JWT `sub`.
 
-## Missing / Not Yet Implemented
+## Gaps vs Target Design
 
-### 1) Auction lifecycle is incomplete
-- No `end_time` on auctions and no scheduled auto-close at end time.
-- No close operation/use case (`auction.closed` workflow) and no winner selection.
-- Current domain has start/close/settle transitions, but still no cancel transition.
+### 1) Architecture shape differs from design
+- Design calls for separate API Gateway, Auction, Bid, Realtime, Settlement, and Notification services.
+- Current implementation is a modular monolith (single Spring Boot deployable) with in-process boundaries.
 
-### 2) Auction model still has partial parity gaps
-- Item/media metadata beyond title/description is still not modeled.
-- `winning_bid_id` is now present in schema/domain, but winner selection logic is not implemented yet.
+### 2) Auction status parity gap
+- Design includes `cancelled` status.
+- Domain enum currently supports only `SCHEDULED`, `LIVE`, `CLOSED`, `SETTLED`.
 
-### 3) Bid workflow gaps
-- No bidder purchasing authorization check.
-- Idempotency uniqueness is scoped by auction (`auctionId + idempotencyKey`), while design calls out bidder-scoped uniqueness (`bidder_id + idempotency_key`).
-- No explicit optimistic retry handling for serialization conflicts.
+### 3) Messaging backbone mismatch
+- Design assumes external event bus (e.g., Kafka) for domain event propagation.
+- Current publisher uses Spring `ApplicationEventPublisher` (in-process), so durability and cross-service delivery semantics differ.
 
-### 4) Real-time and read model features are absent
-- No WebSocket/SSE realtime fan-out service for live updates/countdowns.
-- No cache/read-model updates (e.g., Redis leaderboard/projection path).
+### 4) Realtime scalability gap
+- Design expects horizontally scalable realtime with pub/sub backplane.
+- Current SSE emitter registry is in-memory per app instance.
 
-### 5) Messaging and integration gaps
-- Outbox exists, but no actual event-bus publisher integration (e.g., Kafka producer).
-- No downstream settlement/notification services wired to consume domain events.
+### 5) Missing platform components from design
+- No Redis cache/leaderboard path.
+- No object storage integration for media assets/immutable audit export.
+- No Settlement Service or Notification Service integration consuming domain events.
 
-### 6) Data/consistency differences vs design
-- No persisted bid `placed_at`/domain-level ordering semantics beyond sequence + created timestamp in JPA entity.
-- No explicit DB-level guarantee shown for `(bidder_id, idempotency_key)`.
+### 6) Consistency/retry strategy gap
+- Design calls out optimistic retries for transient serialization conflicts.
+- Current critical path relies primarily on pessimistic row locking and does not implement an explicit optimistic retry policy.
 
 ### 7) Security/compliance/observability gaps
-- JWT auth is present, but no service-to-service mTLS concerns in this app.
-- No signed/immutable audit log export pipeline.
-- No metrics/tracing/correlation-id implementation matching observability targets.
+- JWT auth is present for client-facing APIs, but design-level service-to-service mTLS is not applicable/implemented in current single-service topology.
+- No signed immutable audit-log pipeline.
+- No implementation for the design’s target metrics/tracing/correlation-ID standards.
 
-## Suggested Next Milestone (MVP completion order)
-1. Extend auction schema/domain with `title`, `description`, `startTime`, `endTime`, `winningBidId`.
-2. Add close-auction use case (scheduler + manual endpoint) with winner selection and `auction.closed` event.
-3. Add bidder purchasing authorization port + implementation.
-4. Add real-time push adapter (SSE/WebSocket) triggered from `bid.placed`/`auction.closed`/`auction.settled`.
-5. Replace outbox log stub with real event-bus publisher and retries/dead-letter handling.
+## Recommended Next Steps
+1. Decide whether to keep the modular monolith for MVP or split services per design; align document language either way.
+2. Add/omit `CANCELLED` status intentionally and wire lifecycle/API behavior accordingly.
+3. Replace in-process event publisher with external broker integration if cross-service consumers are required.
+4. Add observability baseline (metrics + tracing + correlation IDs) before scaling.

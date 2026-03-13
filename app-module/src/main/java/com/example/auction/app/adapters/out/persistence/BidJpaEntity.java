@@ -9,7 +9,7 @@ import java.util.UUID;
 @Entity
 @Table(name = "bids", uniqueConstraints = {
         @UniqueConstraint(name = "uq_bid_auction_sequence", columnNames = {"auctionId", "sequenceNumber"}),
-        @UniqueConstraint(name = "uq_bid_idempotency", columnNames = {"auctionId", "idempotencyKey"})
+        @UniqueConstraint(name = "uq_bidder_idempotency", columnNames = {"bidderId", "idempotencyKey"})
 })
 public class BidJpaEntity {
     @Id

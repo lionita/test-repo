@@ -43,7 +43,7 @@ class BiddingCommandServiceTest {
         var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
-        bids.existingKeys.add(id + ":k1");
+        bids.existingKeys.add("u1:k1");
 
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
         service.placeBid(id, "u1", new BigDecimal("90.00"), "k1");
@@ -207,12 +207,12 @@ class BiddingCommandServiceTest {
 
         public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) {
             seq.put(auctionId, sequenceNumber);
-            existingKeys.add(auctionId + ":" + idempotencyKey);
-            savedBids.add(auctionId + ":" + idempotencyKey);
+            existingKeys.add(bidderId + ":" + idempotencyKey);
+            savedBids.add(bidderId + ":" + idempotencyKey);
         }
 
-        public boolean existsByAuctionIdAndIdempotencyKey(UUID auctionId, String idempotencyKey) {
-            return existingKeys.contains(auctionId + ":" + idempotencyKey);
+        public boolean existsByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey) {
+            return existingKeys.contains(bidderId + ":" + idempotencyKey);
         }
 
         public long nextSequence(UUID auctionId) { return seq.getOrDefault(auctionId, 0L) + 1; }

@@ -9,6 +9,6 @@ import java.util.UUID;
 public interface SpringDataBidRepository extends JpaRepository<BidJpaEntity, UUID> {
     @Query("select coalesce(max(b.sequenceNumber),0) from BidJpaEntity b where b.auctionId = :auctionId")
     long maxSequenceByAuctionId(UUID auctionId);
-    boolean existsByAuctionIdAndIdempotencyKey(UUID auctionId, String idempotencyKey);
+    boolean existsByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey);
     Optional<BidJpaEntity> findFirstByAuctionIdOrderByAmountDescSequenceNumberAsc(UUID auctionId);
 }

@@ -75,7 +75,7 @@ paths:
   /api/bidders/{bidderId}/block:
     post:
       summary: Block a bidder
-      description: Requires `admin.write` scope. Blocks bidder for configured duration (default: 2 months).
+      description: Blocks bidder for configured duration.
       operationId: blockBidder
       tags: [Bidders]
       parameters:
@@ -180,6 +180,7 @@ paths:
   /api/auctions/{auctionId}/bids:
     post:
       summary: Place a bid
+      description: Requires `bid.write` scope. `idempotencyKey` must be unique per `bidderId`.
       operationId: placeBid
       tags: [Bids]
       parameters:
@@ -349,6 +350,7 @@ components:
           minimum: 0.01
         idempotencyKey:
           type: string
+          description: Client-generated idempotency token; must be unique per bidder.
     ErrorResponse:
       type: object
       required: [error]

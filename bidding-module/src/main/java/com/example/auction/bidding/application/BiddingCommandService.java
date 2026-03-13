@@ -55,7 +55,7 @@ public class BiddingCommandService {
             throw new IllegalStateException("auction has already ended");
         }
 
-        if (bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, idempotencyKey)) {
+        if (bidRepository.existsByBidderIdAndIdempotencyKey(bidderId, idempotencyKey)) {
             return;
         }
 

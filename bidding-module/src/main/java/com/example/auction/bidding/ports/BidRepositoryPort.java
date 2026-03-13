@@ -8,7 +8,7 @@ public interface BidRepositoryPort {
     record WinningBid(UUID bidId, BigDecimal amount, String bidderId, long sequenceNumber) {}
 
     void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber);
-    boolean existsByAuctionIdAndIdempotencyKey(UUID auctionId, String idempotencyKey);
+    boolean existsByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey);
     long nextSequence(UUID auctionId);
     Optional<WinningBid> findWinningBid(UUID auctionId);
 }
