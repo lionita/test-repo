@@ -1,6 +1,7 @@
 package com.example.auction.app.adapters.in.web;
 
 import com.example.auction.auction.application.AuctionCommandService;
+import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.application.BiddingCommandService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -55,6 +56,14 @@ public class AuctionController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{auctionId}/schedule")
+    @PreAuthorize("hasAuthority('SCOPE_auction.write')")
+    public ResponseEntity<Void> schedule(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID auctionId) {
+        JwtSubjectValidator.requireSubject(jwt);
+        auctionService.schedule(auctionId);
+        return ResponseEntity.noContent().build();
+    }
+
 
     @PostMapping("/{auctionId}/close")
     @PreAuthorize("hasAuthority('SCOPE_auction.write')")
@@ -72,17 +81,30 @@ public class AuctionController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/{auctionId}/cancel")
+    @PreAuthorize("hasAuthority('SCOPE_auction.write')")
+    public ResponseEntity<Void> cancel(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID auctionId) {
+        JwtSubjectValidator.requireSubject(jwt);
+        auctionService.cancel(auctionId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{auctionId}/bids")
     @PreAuthorize("hasAuthority('SCOPE_bid.write')")
-    public ResponseEntity<Void> placeBid(@AuthenticationPrincipal Jwt jwt,
-                                         @PathVariable UUID auctionId,
-                                         @Valid @RequestBody PlaceBidRequest request) {
+    public ResponseEntity<PlaceBidResponse> placeBid(@AuthenticationPrincipal Jwt jwt,
+                                                     @PathVariable UUID auctionId,
+                                                     @Valid @RequestBody PlaceBidRequest request) {
         String subject = JwtSubjectValidator.requireSubject(jwt);
         if (!subject.equals(request.bidderId())) {
             throw new IllegalArgumentException("bidderId must match jwt subject");
         }
-        biddingService.placeBid(auctionId, request.bidderId(), request.amount(), request.idempotencyKey());
-        return ResponseEntity.accepted().build();
+        BiddingCommandService.BidPlacementResult result =
+                biddingService.placeBid(auctionId, request.bidderId(), request.amount(), request.idempotencyKey());
+        PlaceBidResponse response = new PlaceBidResponse(result.status().name(), result.rejectReason());
+        if (result.status() == BidStatus.ACCEPTED) {
+            return ResponseEntity.accepted().body(response);
+        }
+        return ResponseEntity.status(409).body(response);
     }
 
     public record CreateAuctionRequest(@NotBlank @Size(max = 255) String title,
@@ -95,5 +117,7 @@ public class AuctionController {
     public record PlaceBidRequest(@NotBlank String bidderId,
                                   @NotNull @DecimalMin("0.01") BigDecimal amount,
                                   @NotBlank String idempotencyKey) {}
+
+    public record PlaceBidResponse(String status, String rejectReason) {}
 
 }

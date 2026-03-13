@@ -54,7 +54,7 @@
 - `min_increment`
 - `start_time`
 - `end_time`
-- `status` (`scheduled|live|closed|settled|cancelled`)
+- `status` (`draft|scheduled|live|closed|settled|cancelled`)
 - `winning_bid_id` (nullable)
 
 ### `bids`
@@ -65,6 +65,8 @@
 - `placed_at`
 - `sequence_number` (monotonic per auction)
 - `idempotency_key`
+- `bid_status` (`accepted|rejected`)
+- `reject_reason` (nullable, required when rejected)
 
 ## Critical Workflows
 

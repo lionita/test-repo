@@ -105,6 +105,7 @@ paths:
   /api/auctions:
     post:
       summary: Create an auction
+      description: Creates an auction in `DRAFT` state.
       operationId: createAuction
       tags: [Auctions]
       requestBody:
@@ -145,6 +146,22 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/schedule:
+    post:
+      summary: Schedule an auction
+      operationId: scheduleAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction scheduled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/auctions/{auctionId}/close:
     post:
       summary: Close an auction
@@ -155,6 +172,22 @@ paths:
       responses:
         '204':
           description: Auction closed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/cancel:
+    post:
+      summary: Cancel an auction
+      operationId: cancelAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction cancelled
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -194,12 +227,20 @@ paths:
       responses:
         '202':
           description: Bid accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceBidResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: Bid rejected by business rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceBidResponse'
 components:
   securitySchemes:
     bearerAuth:
@@ -351,6 +392,16 @@ components:
         idempotencyKey:
           type: string
           description: Client-generated idempotency token; must be unique per bidder.
+    PlaceBidResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        rejectReason:
+          type: string
+          nullable: true
     ErrorResponse:
       type: object
       required: [error]

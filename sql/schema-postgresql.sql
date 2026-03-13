@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS auctions (
     current_price NUMERIC(19,2),
     winning_bid_id UUID,
     CONSTRAINT chk_auctions_status
-        CHECK (status IN ('SCHEDULED', 'LIVE', 'CLOSED', 'SETTLED')),
+        CHECK (status IN ('DRAFT', 'SCHEDULED', 'LIVE', 'CLOSED', 'SETTLED', 'CANCELLED')),
     CONSTRAINT chk_auctions_prices
         CHECK (reserve_price >= 0 AND min_increment > 0),
     CONSTRAINT chk_auctions_time_window
@@ -39,15 +39,26 @@ CREATE TABLE IF NOT EXISTS bids (
     auction_id UUID NOT NULL,
     bidder_id VARCHAR(255) NOT NULL,
     amount NUMERIC(19,2) NOT NULL,
-    sequence_number BIGINT NOT NULL,
+    sequence_number BIGINT,
     idempotency_key VARCHAR(255) NOT NULL,
+    bid_status VARCHAR(16) NOT NULL,
+    reject_reason VARCHAR(1024),
     created_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT uq_bid_auction_sequence UNIQUE (auction_id, sequence_number),
     CONSTRAINT uq_bidder_idempotency UNIQUE (bidder_id, idempotency_key),
     CONSTRAINT fk_bids_auction FOREIGN KEY (auction_id) REFERENCES auctions(id),
     CONSTRAINT fk_bids_bidder FOREIGN KEY (bidder_id) REFERENCES bidders(id),
     CONSTRAINT chk_bids_amount_positive CHECK (amount > 0),
-    CONSTRAINT chk_bids_sequence_positive CHECK (sequence_number > 0)
+    CONSTRAINT chk_bids_sequence_positive CHECK (sequence_number IS NULL OR sequence_number > 0),
+    CONSTRAINT chk_bids_status CHECK (bid_status IN ('ACCEPTED', 'REJECTED')),
+    CONSTRAINT chk_bids_status_reason CHECK (
+        (bid_status = 'ACCEPTED' AND reject_reason IS NULL)
+        OR (bid_status = 'REJECTED' AND reject_reason IS NOT NULL)
+    ),
+    CONSTRAINT chk_bids_status_sequence CHECK (
+        (bid_status = 'ACCEPTED' AND sequence_number IS NOT NULL)
+        OR (bid_status = 'REJECTED' AND sequence_number IS NULL)
+    )
 );
 
 DO $$
@@ -82,7 +93,7 @@ CREATE INDEX IF NOT EXISTS idx_auctions_status_end_time
     ON auctions (status, end_time);
 
 CREATE INDEX IF NOT EXISTS idx_bids_auction_amount_sequence
-    ON bids (auction_id, amount DESC, sequence_number ASC);
+    ON bids (auction_id, bid_status, amount DESC, sequence_number ASC);
 
 CREATE INDEX IF NOT EXISTS idx_outbox_events_ready
     ON outbox_events (next_attempt_at, created_at)

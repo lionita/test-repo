@@ -5,6 +5,7 @@ import com.example.auction.app.adapters.out.realtime.RealtimePushAdapter;
 import com.example.auction.auction.domain.Auction;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
+import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.ports.BidRepositoryPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,7 +135,7 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     }
 
     @Override
-    public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) {
+    public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, Long sequenceNumber, BidStatus bidStatus, String rejectReason) {
         BidJpaEntity entity = new BidJpaEntity();
         entity.setId(UUID.randomUUID());
         entity.setAuctionId(auctionId);
@@ -142,19 +143,22 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
         entity.setAmount(amount);
         entity.setIdempotencyKey(idempotencyKey);
         entity.setSequenceNumber(sequenceNumber);
+        entity.setBidStatus(bidStatus);
+        entity.setRejectReason(rejectReason);
         entity.setCreatedAt(OffsetDateTime.now());
         bidRepository.save(entity);
     }
 
 
     @Override
-    public boolean existsByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey) {
-        return bidRepository.existsByBidderIdAndIdempotencyKey(bidderId, idempotencyKey);
+    public Optional<BidDecision> findByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey) {
+        return bidRepository.findByBidderIdAndIdempotencyKey(bidderId, idempotencyKey)
+                .map(b -> new BidDecision(b.getBidStatus(), b.getRejectReason()));
     }
 
     @Override
     public Optional<WinningBid> findWinningBid(UUID auctionId) {
-        return bidRepository.findFirstByAuctionIdOrderByAmountDescSequenceNumberAsc(auctionId)
+        return bidRepository.findFirstByAuctionIdAndBidStatusOrderByAmountDescSequenceNumberAsc(auctionId, BidStatus.ACCEPTED)
                 .map(bid -> new WinningBid(bid.getId(), bid.getAmount(), bid.getBidderId(), bid.getSequenceNumber()));
     }
 

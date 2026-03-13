@@ -25,10 +25,10 @@ VALUES
  ('david', 'David', 'Dunn', 'david@example.com', 'NID-DAVID-001', 700.00, NOW() - INTERVAL '12 hours', NULL, NOW() + INTERVAL '2 months')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO bids (id, auction_id, bidder_id, amount, sequence_number, idempotency_key, created_at)
+INSERT INTO bids (id, auction_id, bidder_id, amount, sequence_number, idempotency_key, bid_status, reject_reason, created_at)
 VALUES
- ('22222222-2222-2222-2222-222222222221', '11111111-1111-1111-1111-111111111111', 'alice', 100.00, 1, 'alice-1', NOW()),
- ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'bob', 120.00, 2, 'bob-1', NOW())
+ ('22222222-2222-2222-2222-222222222221', '11111111-1111-1111-1111-111111111111', 'alice', 100.00, 1, 'alice-1', 'ACCEPTED', NULL, NOW()),
+ ('22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'bob', 120.00, 2, 'bob-1', 'ACCEPTED', NULL, NOW())
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO outbox_events (id, event_type, aggregate_id, payload, created_at, published_at, publish_attempts, next_attempt_at, dead_lettered_at, last_error)

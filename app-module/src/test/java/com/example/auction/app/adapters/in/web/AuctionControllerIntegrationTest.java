@@ -60,11 +60,10 @@ class AuctionControllerIntegrationTest {
     @Test
     void createAuctionThenStart_returnsExpectedStatuses() throws Exception {
         UUID auctionId = createAuction();
+        assertThat(auctionRepository.findById(auctionId)).isPresent();
+        assertThat(auctionRepository.findById(auctionId).orElseThrow().getStatus().name()).isEqualTo("DRAFT");
 
-        mockMvc.perform(post("/api/auctions/{auctionId}/start", auctionId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt()
-                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
-                .andExpect(status().isNoContent());
+        startAuction(auctionId);
 
         assertThat(auctionRepository.findById(auctionId)).isPresent();
         assertThat(auctionRepository.findById(auctionId).orElseThrow().getStatus().name()).isEqualTo("LIVE");
@@ -167,7 +166,13 @@ class AuctionControllerIntegrationTest {
                                 """))
                 .andExpect(status().isConflict());
 
-        assertThat(bidRepository.findAll()).isEmpty();
+        assertThat(bidRepository.findAll())
+                .hasSize(1)
+                .first()
+                .satisfies(bid -> {
+                    assertThat(bid.getBidStatus().name()).isEqualTo("REJECTED");
+                    assertThat(bid.getRejectReason()).isNotBlank();
+                });
     }
 
     @Test
@@ -366,6 +371,21 @@ class AuctionControllerIntegrationTest {
                 .anySatisfy(event -> assertThat(event.getEventType()).isEqualTo("auction.settled"));
     }
 
+    @Test
+    void cancelAuction_transitionsToCancelled() throws Exception {
+        UUID auctionId = createAuction();
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/cancel", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
+                .andExpect(status().isNoContent());
+
+        assertThat(auctionRepository.findById(auctionId)).isPresent();
+        assertThat(auctionRepository.findById(auctionId).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+        assertThat(outboxRepository.findAll())
+                .anySatisfy(event -> assertThat(event.getEventType()).isEqualTo("auction.cancelled"));
+    }
+
     private UUID createAuction() throws Exception {
         return createAuction(
                 OffsetDateTime.parse("2026-01-01T10:00:00Z"),
@@ -397,7 +417,15 @@ class AuctionControllerIntegrationTest {
     }
 
     private void startAuction(UUID auctionId) throws Exception {
+        scheduleAuction(auctionId);
         mockMvc.perform(post("/api/auctions/{auctionId}/start", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
+                .andExpect(status().isNoContent());
+    }
+
+    private void scheduleAuction(UUID auctionId) throws Exception {
+        mockMvc.perform(post("/api/auctions/{auctionId}/schedule", auctionId)
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
                 .andExpect(status().isNoContent());
