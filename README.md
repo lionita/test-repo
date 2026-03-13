@@ -21,6 +21,28 @@ Multi-module Spring Boot reference implementation using Java 22, Spring Boot 3.5
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 - Both OpenAPI endpoints are publicly accessible; business API endpoints still require JWT.
 
+## Observability baseline
+- Correlation IDs:
+  - Request/response header: `X-Correlation-Id`
+  - If absent on request, server generates one and returns it in response.
+- Actuator endpoints (public):
+  - `GET /actuator/health`
+  - `GET /actuator/info`
+  - `GET /actuator/metrics`
+  - `GET /actuator/prometheus`
+- Tracing:
+  - Micrometer tracing with OTel bridge enabled.
+  - Log pattern includes `correlationId`, `traceId`, and `spanId`.
+- Custom metrics:
+  - `auction.bids.accepted.total`
+  - `auction.bids.rejected.total`
+  - `auction.bids.errors.total`
+  - `auction.bids.request.duration` (tag: `outcome`)
+  - `auction.outbox.publish.success.total`
+  - `auction.outbox.publish.failure.total`
+  - `auction.outbox.deadletter.total`
+  - `auction.outbox.publish.batch.duration` (tag: `processed`)
+
 ## Sample SQL
 - `sql/sample-data.sql` contains sample inserts for auctions, bids, and outbox events.
 

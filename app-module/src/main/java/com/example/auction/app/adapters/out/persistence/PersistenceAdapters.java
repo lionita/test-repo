@@ -7,6 +7,10 @@ import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
 import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.ports.BidRepositoryPort;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -31,14 +35,19 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     private final RealtimePushAdapter realtimePushAdapter;
     private final int maxPublishAttempts;
     private final int retryDelaySeconds;
+    private final MeterRegistry meterRegistry;
+    private final Counter outboxPublishSuccessCounter;
+    private final Counter outboxPublishFailureCounter;
+    private final Counter outboxDeadLetterCounter;
 
     @Autowired
     public PersistenceAdapters(SpringDataAuctionRepository auctionRepository,
                                SpringDataBidRepository bidRepository,
                                SpringDataOutboxRepository outboxRepository,
                                EventBusPublisher eventBusPublisher,
-                               RealtimePushAdapter realtimePushAdapter) {
-        this(auctionRepository, bidRepository, outboxRepository, eventBusPublisher, realtimePushAdapter, 5, 5);
+                               RealtimePushAdapter realtimePushAdapter,
+                               MeterRegistry meterRegistry) {
+        this(auctionRepository, bidRepository, outboxRepository, eventBusPublisher, realtimePushAdapter, 5, 5, meterRegistry);
     }
 
     PersistenceAdapters(SpringDataAuctionRepository auctionRepository,
@@ -48,6 +57,17 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
                         RealtimePushAdapter realtimePushAdapter,
                         int maxPublishAttempts,
                         int retryDelaySeconds) {
+        this(auctionRepository, bidRepository, outboxRepository, eventBusPublisher, realtimePushAdapter, maxPublishAttempts, retryDelaySeconds, new SimpleMeterRegistry());
+    }
+
+    PersistenceAdapters(SpringDataAuctionRepository auctionRepository,
+                        SpringDataBidRepository bidRepository,
+                        SpringDataOutboxRepository outboxRepository,
+                        EventBusPublisher eventBusPublisher,
+                        RealtimePushAdapter realtimePushAdapter,
+                        int maxPublishAttempts,
+                        int retryDelaySeconds,
+                        MeterRegistry meterRegistry) {
         this.auctionRepository = auctionRepository;
         this.bidRepository = bidRepository;
         this.outboxRepository = outboxRepository;
@@ -55,6 +75,16 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
         this.realtimePushAdapter = realtimePushAdapter;
         this.maxPublishAttempts = maxPublishAttempts;
         this.retryDelaySeconds = retryDelaySeconds;
+        this.meterRegistry = meterRegistry;
+        this.outboxPublishSuccessCounter = Counter.builder("auction.outbox.publish.success.total")
+                .description("Total successful outbox publishes")
+                .register(meterRegistry);
+        this.outboxPublishFailureCounter = Counter.builder("auction.outbox.publish.failure.total")
+                .description("Total failed outbox publish attempts")
+                .register(meterRegistry);
+        this.outboxDeadLetterCounter = Counter.builder("auction.outbox.deadletter.total")
+                .description("Total outbox events dead-lettered")
+                .register(meterRegistry);
     }
 
     @Override
@@ -186,8 +216,11 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
     @Scheduled(fixedDelay = 3000)
     @Transactional
     public void publishPending() {
+        Timer.Sample sample = Timer.start(meterRegistry);
         OffsetDateTime now = OffsetDateTime.now();
+        int processed = 0;
         for (OutboxEventJpaEntity event : outboxRepository.claimReadyToPublish(now)) {
+            processed++;
             if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
                 try {
                     realtimePushAdapter.publish(event.getEventType(), event.getPayload());
@@ -199,12 +232,15 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
                 eventBusPublisher.publish(event.getEventType(), event.getAggregateId(), event.getPayload());
                 event.setPublishedAt(OffsetDateTime.now());
                 event.setLastError(null);
+                outboxPublishSuccessCounter.increment();
             } catch (RuntimeException ex) {
                 int attempts = event.getPublishAttempts() + 1;
                 event.setPublishAttempts(attempts);
                 event.setLastError(ex.getMessage());
+                outboxPublishFailureCounter.increment();
                 if (attempts >= maxPublishAttempts) {
                     event.setDeadLetteredAt(OffsetDateTime.now());
+                    outboxDeadLetterCounter.increment();
                     log.error("Dead-lettered outbox event type={} aggregateId={} after {} attempts", event.getEventType(), event.getAggregateId(), attempts, ex);
                 } else {
                     event.setNextAttemptAt(OffsetDateTime.now().plusSeconds((long) retryDelaySeconds * attempts));
@@ -212,5 +248,9 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
                 }
             }
         }
+        sample.stop(Timer.builder("auction.outbox.publish.batch.duration")
+                .description("Outbox publish batch duration")
+                .tag("processed", processed > 0 ? "yes" : "no")
+                .register(meterRegistry));
     }
 }

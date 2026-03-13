@@ -3,6 +3,9 @@ package com.example.auction.app.adapters.in.web;
 import com.example.auction.auction.application.AuctionCommandService;
 import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.application.BiddingCommandService;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
@@ -26,11 +29,26 @@ import java.util.UUID;
 public class AuctionController {
     private final AuctionCommandService auctionService;
     private final BiddingCommandService biddingService;
+    private final MeterRegistry meterRegistry;
+    private final Counter acceptedBidsCounter;
+    private final Counter rejectedBidsCounter;
+    private final Counter bidRequestErrorsCounter;
 
     public AuctionController(AuctionCommandService auctionService,
-                             BiddingCommandService biddingService) {
+                             BiddingCommandService biddingService,
+                             MeterRegistry meterRegistry) {
         this.auctionService = auctionService;
         this.biddingService = biddingService;
+        this.meterRegistry = meterRegistry;
+        this.acceptedBidsCounter = Counter.builder("auction.bids.accepted.total")
+                .description("Total accepted bid requests")
+                .register(meterRegistry);
+        this.rejectedBidsCounter = Counter.builder("auction.bids.rejected.total")
+                .description("Total rejected bid requests")
+                .register(meterRegistry);
+        this.bidRequestErrorsCounter = Counter.builder("auction.bids.errors.total")
+                .description("Total bid request errors (exceptions)")
+                .register(meterRegistry);
     }
 
     @PostMapping
@@ -94,17 +112,33 @@ public class AuctionController {
     public ResponseEntity<PlaceBidResponse> placeBid(@AuthenticationPrincipal Jwt jwt,
                                                      @PathVariable UUID auctionId,
                                                      @Valid @RequestBody PlaceBidRequest request) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        String outcome = "error";
         String subject = JwtSubjectValidator.requireSubject(jwt);
         if (!subject.equals(request.bidderId())) {
             throw new IllegalArgumentException("bidderId must match jwt subject");
         }
-        BiddingCommandService.BidPlacementResult result =
-                biddingService.placeBid(auctionId, request.bidderId(), request.amount(), request.idempotencyKey());
-        PlaceBidResponse response = new PlaceBidResponse(result.status().name(), result.rejectReason());
-        if (result.status() == BidStatus.ACCEPTED) {
-            return ResponseEntity.accepted().body(response);
+        try {
+            BiddingCommandService.BidPlacementResult result =
+                    biddingService.placeBid(auctionId, request.bidderId(), request.amount(), request.idempotencyKey());
+            PlaceBidResponse response = new PlaceBidResponse(result.status().name(), result.rejectReason());
+            if (result.status() == BidStatus.ACCEPTED) {
+                acceptedBidsCounter.increment();
+                outcome = "accepted";
+                return ResponseEntity.accepted().body(response);
+            }
+            rejectedBidsCounter.increment();
+            outcome = "rejected";
+            return ResponseEntity.status(409).body(response);
+        } catch (RuntimeException ex) {
+            bidRequestErrorsCounter.increment();
+            throw ex;
+        } finally {
+            sample.stop(Timer.builder("auction.bids.request.duration")
+                    .description("Bid request processing time")
+                    .tag("outcome", outcome)
+                    .register(meterRegistry));
         }
-        return ResponseEntity.status(409).body(response);
     }
 
     public record CreateAuctionRequest(@NotBlank @Size(max = 255) String title,

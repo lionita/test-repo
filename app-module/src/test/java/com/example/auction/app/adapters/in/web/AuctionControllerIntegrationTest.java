@@ -116,6 +116,27 @@ class AuctionControllerIntegrationTest {
     }
 
     @Test
+    void createAuction_echoesCorrelationIdHeader() throws Exception {
+        mockMvc.perform(post("/api/auctions")
+                        .header("X-Correlation-Id", "corr-it-123")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Vintage Watch",
+                                  "description": "Restored 1960s mechanical watch",
+                                  "reservePrice": 100.00,
+                                  "minIncrement": 5.00,
+                                  "startTime": "2026-01-01T10:00:00Z",
+                                  "endTime": "2026-01-01T12:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(header().string("X-Correlation-Id", "corr-it-123"));
+    }
+
+    @Test
     void onboardBidder_thenPlaceBid_afterAuctionStarted_acceptsBidAndPersistsIt() throws Exception {
         UUID auctionId = createAuction(
                 OffsetDateTime.now().minusMinutes(1),

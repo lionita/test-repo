@@ -16,6 +16,19 @@ spring:
         jwt:
           issuer-uri: https://example-issuer.local/
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
+
+logging:
+  pattern:
+    level: "%5p [corr:%X{correlationId:-}] [trace:%X{traceId:-}] [span:%X{spanId:-}]"
+
 auction:
   bidders:
     block-duration-months: 2
