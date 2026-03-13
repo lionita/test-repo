@@ -46,6 +46,11 @@ Multi-module Spring Boot reference implementation using Java 22, Spring Boot 3.5
 ## Sample SQL
 - `sql/sample-data.sql` contains sample inserts for auctions, bids, and outbox events.
 
+## Database migrations
+- Flyway is enabled in `app-module` and runs on startup.
+- Initial schema migration: `app-module/src/main/resources/db/migration/V1__initial_schema.sql`
+- Runtime JPA mode is `validate` (schema changes must come from Flyway migrations).
+
 ## Run tests
 ```bash
 mvn -pl bidding-module test

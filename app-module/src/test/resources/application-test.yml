@@ -11,6 +11,8 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+  flyway:
+    enabled: false
   security:
     oauth2:
       resourceserver:
