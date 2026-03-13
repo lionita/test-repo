@@ -4,6 +4,7 @@ import com.example.auction.auction.domain.Auction;
 import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.auction.ports.AuctionRepositoryPort;
 import com.example.auction.auction.ports.OutboxPort;
+import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.ports.BidRepositoryPort;
 import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 import org.junit.jupiter.api.Test;
@@ -28,26 +29,30 @@ class BiddingCommandServiceTest {
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
-        service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
+        BiddingCommandService.BidPlacementResult result = service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
 
+        assertEquals(BidStatus.ACCEPTED, result.status());
+        assertNull(result.rejectReason());
         assertEquals(new BigDecimal("100.00"), auctions.findById(id).orElseThrow().currentPrice());
         assertEquals(1, bids.seq.get(id));
         assertTrue(outbox.events.contains("bid.placed"));
     }
 
     @Test
-    void returnsWithoutSideEffectsWhenIdempotencyKeyAlreadyExists() {
+    void reusesStoredDecisionWhenIdempotencyKeyAlreadyExists() {
         var auctions = new InMemAuctions();
         var bids = new InMemBids();
         var outbox = new InMemOutbox();
         var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
-        bids.existingKeys.add(id + ":k1");
+        bids.decisions.put("u1:k1", new BidRepositoryPort.BidDecision(BidStatus.REJECTED, "auction is not live"));
 
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
-        service.placeBid(id, "u1", new BigDecimal("90.00"), "k1");
+        BiddingCommandService.BidPlacementResult result = service.placeBid(id, "u1", new BigDecimal("90.00"), "k1");
 
+        assertEquals(BidStatus.REJECTED, result.status());
+        assertEquals("auction is not live", result.rejectReason());
         assertTrue(bids.savedBids.isEmpty());
         assertEquals(0, bidderAuthorization.calls);
         assertTrue(outbox.events.isEmpty());
@@ -64,9 +69,12 @@ class BiddingCommandServiceTest {
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
-        assertThrows(IllegalArgumentException.class,
-                () -> service.placeBid(id, "u1", new BigDecimal("99.99"), "k1"));
+        BiddingCommandService.BidPlacementResult result =
+                service.placeBid(id, "u1", new BigDecimal("99.99"), "k1");
+        assertEquals(BidStatus.REJECTED, result.status());
+        assertTrue(result.rejectReason().startsWith("bid must be >="));
         assertEquals(0, bidderAuthorization.calls);
+        assertTrue(outbox.events.contains("bid.rejected"));
     }
 
     @Test
@@ -125,10 +133,12 @@ class BiddingCommandServiceTest {
 
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
 
-        assertThrows(IllegalStateException.class,
-                () -> service.placeBid(id, "u1", new BigDecimal("100.00"), "k1"));
+        BiddingCommandService.BidPlacementResult result =
+                service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
+        assertEquals(BidStatus.REJECTED, result.status());
+        assertEquals("auction is not live", result.rejectReason());
         assertTrue(bids.seq.isEmpty());
-        assertTrue(outbox.events.isEmpty());
+        assertTrue(outbox.events.contains("bid.rejected"));
     }
 
     @Test
@@ -142,8 +152,11 @@ class BiddingCommandServiceTest {
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
 
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
-        assertThrows(IllegalStateException.class,
-                () -> service.placeBid(id, "u1", new BigDecimal("100.00"), "k1"));
+        BiddingCommandService.BidPlacementResult result =
+                service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
+        assertEquals(BidStatus.REJECTED, result.status());
+        assertEquals("bidder has insufficient purchasing authorization", result.rejectReason());
+        assertTrue(outbox.events.contains("bid.rejected"));
     }
 
 
@@ -161,10 +174,11 @@ class BiddingCommandServiceTest {
         Clock afterEnd = Clock.fixed(Instant.parse("2026-01-01T12:00:01Z"), ZoneOffset.UTC);
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization, afterEnd);
 
-        assertThrows(IllegalStateException.class,
-                () -> service.placeBid(id, "u1", new BigDecimal("100.00"), "k1"));
-        assertTrue(bids.savedBids.isEmpty());
-        assertTrue(outbox.events.isEmpty());
+        BiddingCommandService.BidPlacementResult result =
+                service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
+        assertEquals(BidStatus.REJECTED, result.status());
+        assertEquals("auction has already ended", result.rejectReason());
+        assertTrue(outbox.events.contains("bid.rejected"));
     }
 
     static class InMemAuctions implements AuctionRepositoryPort {
@@ -202,17 +216,19 @@ class BiddingCommandServiceTest {
 
     static class InMemBids implements BidRepositoryPort {
         Map<UUID, Long> seq = new HashMap<>();
-        Set<String> existingKeys = new HashSet<>();
+        Map<String, BidDecision> decisions = new HashMap<>();
         List<String> savedBids = new ArrayList<>();
 
-        public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, long sequenceNumber) {
-            seq.put(auctionId, sequenceNumber);
-            existingKeys.add(auctionId + ":" + idempotencyKey);
-            savedBids.add(auctionId + ":" + idempotencyKey);
+        public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, Long sequenceNumber, BidStatus bidStatus, String rejectReason) {
+            if (sequenceNumber != null) {
+                seq.put(auctionId, sequenceNumber);
+            }
+            decisions.put(bidderId + ":" + idempotencyKey, new BidDecision(bidStatus, rejectReason));
+            savedBids.add(bidderId + ":" + idempotencyKey);
         }
 
-        public boolean existsByAuctionIdAndIdempotencyKey(UUID auctionId, String idempotencyKey) {
-            return existingKeys.contains(auctionId + ":" + idempotencyKey);
+        public Optional<BidDecision> findByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey) {
+            return Optional.ofNullable(decisions.get(bidderId + ":" + idempotencyKey));
         }
 
         public long nextSequence(UUID auctionId) { return seq.getOrDefault(auctionId, 0L) + 1; }

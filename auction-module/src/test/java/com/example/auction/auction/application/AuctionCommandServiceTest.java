@@ -40,8 +40,45 @@ class AuctionCommandServiceTest {
         assertEquals("Restored 1960s mechanical watch", auction.description());
         assertEquals(start, auction.startTime());
         assertEquals(end, auction.endTime());
+        assertEquals(AuctionStatus.DRAFT, auction.status());
         assertNull(auction.winningBidId());
         assertTrue(outbox.events.contains("auction.created"));
+    }
+
+    @Test
+    void scheduleTransitionsDraftAuctionAndWritesScheduledEvent() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var service = new AuctionCommandService(auctions, outbox, new InMemBids());
+
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.DRAFT,
+                null, null));
+
+        service.schedule(auctionId);
+
+        Auction scheduled = auctions.findById(auctionId).orElseThrow();
+        assertEquals(AuctionStatus.SCHEDULED, scheduled.status());
+        assertTrue(outbox.events.contains("auction.scheduled"));
+    }
+
+    @Test
+    void cancelTransitionsAuctionAndWritesCancelledEvent() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var service = new AuctionCommandService(auctions, outbox, new InMemBids());
+
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.SCHEDULED,
+                null, null));
+
+        service.cancel(auctionId);
+
+        Auction cancelled = auctions.findById(auctionId).orElseThrow();
+        assertEquals(AuctionStatus.CANCELLED, cancelled.status());
+        assertTrue(outbox.events.contains("auction.cancelled"));
     }
 
     @Test

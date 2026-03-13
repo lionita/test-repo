@@ -1,5 +1,6 @@
 package com.example.auction.app.adapters.out.persistence;
 
+import com.example.auction.bidding.domain.BidStatus;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -7,9 +8,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "bids", uniqueConstraints = {
+@Table(name = "bids", schema = "auction", uniqueConstraints = {
         @UniqueConstraint(name = "uq_bid_auction_sequence", columnNames = {"auctionId", "sequenceNumber"}),
-        @UniqueConstraint(name = "uq_bid_idempotency", columnNames = {"auctionId", "idempotencyKey"})
+        @UniqueConstraint(name = "uq_bidder_idempotency", columnNames = {"bidderId", "idempotencyKey"})
 })
 public class BidJpaEntity {
     @Id
@@ -20,10 +21,15 @@ public class BidJpaEntity {
     private String bidderId;
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
-    @Column(nullable = false)
-    private long sequenceNumber;
+    @Column
+    private Long sequenceNumber;
     @Column(nullable = false)
     private String idempotencyKey;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private BidStatus bidStatus;
+    @Column(length = 1024)
+    private String rejectReason;
     @Column(nullable = false)
     private OffsetDateTime createdAt;
 
@@ -35,10 +41,14 @@ public class BidJpaEntity {
     public void setBidderId(String bidderId) { this.bidderId = bidderId; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
-    public long getSequenceNumber() { return sequenceNumber; }
-    public void setSequenceNumber(long sequenceNumber) { this.sequenceNumber = sequenceNumber; }
+    public Long getSequenceNumber() { return sequenceNumber; }
+    public void setSequenceNumber(Long sequenceNumber) { this.sequenceNumber = sequenceNumber; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public void setIdempotencyKey(String idempotencyKey) { this.idempotencyKey = idempotencyKey; }
+    public BidStatus getBidStatus() { return bidStatus; }
+    public void setBidStatus(BidStatus bidStatus) { this.bidStatus = bidStatus; }
+    public String getRejectReason() { return rejectReason; }
+    public void setRejectReason(String rejectReason) { this.rejectReason = rejectReason; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
 }

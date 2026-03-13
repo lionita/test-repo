@@ -1,9 +1,12 @@
 package com.example.auction.app.adapters.out.persistence;
 
 import com.example.auction.auction.domain.AuctionStatus;
+import com.example.auction.bidding.domain.BidStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -13,6 +16,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
+@ActiveProfiles("test")
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 class SpringDataRepositoriesTest {
 
     @Autowired
@@ -51,10 +56,10 @@ class SpringDataRepositoriesTest {
         bidRepository.saveAll(List.of(first, second, third));
 
         assertThat(bidRepository.maxSequenceByAuctionId(auctionId)).isEqualTo(3);
-        assertThat(bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, "idempotency-2")).isTrue();
-        assertThat(bidRepository.existsByAuctionIdAndIdempotencyKey(auctionId, "missing")).isFalse();
+        assertThat(bidRepository.findByBidderIdAndIdempotencyKey("bidder-2", "idempotency-2")).isPresent();
+        assertThat(bidRepository.findByBidderIdAndIdempotencyKey("bidder-2", "missing")).isEmpty();
 
-        BidJpaEntity highestBid = bidRepository.findFirstByAuctionIdOrderByAmountDescSequenceNumberAsc(auctionId)
+        BidJpaEntity highestBid = bidRepository.findFirstByAuctionIdAndBidStatusOrderByAmountDescSequenceNumberAsc(auctionId, BidStatus.ACCEPTED)
                 .orElseThrow();
         assertThat(highestBid.getId()).isEqualTo(second.getId());
     }
@@ -106,6 +111,8 @@ class SpringDataRepositoriesTest {
         entity.setAmount(amount);
         entity.setSequenceNumber(sequence);
         entity.setIdempotencyKey(idempotencyKey);
+        entity.setBidStatus(BidStatus.ACCEPTED);
+        entity.setRejectReason(null);
         entity.setCreatedAt(OffsetDateTime.now().minusMinutes(5).plusSeconds(sequence));
         return entity;
     }

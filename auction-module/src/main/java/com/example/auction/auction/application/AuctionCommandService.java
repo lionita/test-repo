@@ -48,9 +48,18 @@ public class AuctionCommandService {
         if (!endTime.isAfter(startTime)) throw new IllegalArgumentException("endTime must be after startTime");
 
         UUID id = UUID.randomUUID();
-        auctionRepository.save(new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.SCHEDULED, null, null));
+        auctionRepository.save(new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.DRAFT, null, null));
         outboxPort.append("auction.created", id, "{\"auctionId\":\"" + id + "\"}");
         return id;
+    }
+
+    @Transactional
+    public void schedule(UUID auctionId) {
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        Auction scheduledAuction = auction.schedule();
+        auctionRepository.save(scheduledAuction);
+        outboxPort.append("auction.scheduled", auctionId, "{\"auctionId\":\"" + auctionId + "\"}");
     }
 
     @Transactional
@@ -117,5 +126,14 @@ public class AuctionCommandService {
                 : "\"" + settledAuction.winningBidId() + "\"";
         outboxPort.append("auction.settled", auctionId,
                 "{\"auctionId\":\"" + auctionId + "\",\"winningBidId\":" + winningBidIdJsonValue + "}");
+    }
+
+    @Transactional
+    public void cancel(UUID auctionId) {
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        Auction cancelledAuction = auction.cancel();
+        auctionRepository.save(cancelledAuction);
+        outboxPort.append("auction.cancelled", auctionId, "{\"auctionId\":\"" + auctionId + "\"}");
     }
 }
