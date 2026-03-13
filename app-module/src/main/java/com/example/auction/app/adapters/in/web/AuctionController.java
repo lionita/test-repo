@@ -1,6 +1,12 @@
 package com.example.auction.app.adapters.in.web;
 
+import com.example.auction.app.adapters.out.persistence.AuctionJpaEntity;
+import com.example.auction.app.adapters.out.persistence.BidJpaEntity;
+import com.example.auction.app.adapters.out.persistence.SpringDataAuctionRepository;
+import com.example.auction.app.adapters.out.persistence.SpringDataBidRepository;
+import com.example.auction.app.security.JwtSubjectValidator;
 import com.example.auction.auction.application.AuctionCommandService;
+import com.example.auction.auction.domain.AuctionStatus;
 import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.application.BiddingCommandService;
 import io.micrometer.core.instrument.Counter;
@@ -11,16 +17,17 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
-import com.example.auction.app.security.JwtSubjectValidator;
 
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -29,6 +36,8 @@ import java.util.UUID;
 public class AuctionController {
     private final AuctionCommandService auctionService;
     private final BiddingCommandService biddingService;
+    private final SpringDataAuctionRepository auctionRepository;
+    private final SpringDataBidRepository bidRepository;
     private final MeterRegistry meterRegistry;
     private final Counter acceptedBidsCounter;
     private final Counter rejectedBidsCounter;
@@ -36,9 +45,13 @@ public class AuctionController {
 
     public AuctionController(AuctionCommandService auctionService,
                              BiddingCommandService biddingService,
+                             SpringDataAuctionRepository auctionRepository,
+                             SpringDataBidRepository bidRepository,
                              MeterRegistry meterRegistry) {
         this.auctionService = auctionService;
         this.biddingService = biddingService;
+        this.auctionRepository = auctionRepository;
+        this.bidRepository = bidRepository;
         this.meterRegistry = meterRegistry;
         this.acceptedBidsCounter = Counter.builder("auction.bids.accepted.total")
                 .description("Total accepted bid requests")
@@ -64,6 +77,29 @@ public class AuctionController {
                 request.startTime(),
                 request.endTime());
         return ResponseEntity.created(URI.create("/api/auctions/" + id)).body(Map.of("auctionId", id));
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<AuctionResponse> getById(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        JwtSubjectValidator.requireSubject(jwt);
+        AuctionJpaEntity auction = auctionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + id));
+        return ResponseEntity.ok(toAuctionResponse(auction));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<AuctionResponse>> list(@AuthenticationPrincipal Jwt jwt,
+                                                      @RequestParam(required = false) AuctionStatus status,
+                                                      @RequestParam(required = false) String query,
+                                                      @RequestParam(defaultValue = "50") int limit) {
+        JwtSubjectValidator.requireSubject(jwt);
+        int safeLimit = normalizeLimit(limit);
+        String normalizedQuery = (query == null || query.isBlank()) ? null : query.trim();
+        List<AuctionResponse> items = auctionRepository.search(status, normalizedQuery, PageRequest.of(0, safeLimit))
+                .stream()
+                .map(AuctionController::toAuctionResponse)
+                .toList();
+        return ResponseEntity.ok(items);
     }
 
     @PostMapping("/{auctionId}/start")
@@ -141,6 +177,76 @@ public class AuctionController {
         }
     }
 
+    @GetMapping("/{id}/bids")
+    public ResponseEntity<List<BidResponse>> listBids(@AuthenticationPrincipal Jwt jwt,
+                                                      @PathVariable UUID id,
+                                                      @RequestParam(defaultValue = "50") int limit) {
+        JwtSubjectValidator.requireSubject(jwt);
+        int safeLimit = normalizeLimit(limit);
+        if (!auctionRepository.existsById(id)) {
+            throw new IllegalArgumentException("auction not found: " + id);
+        }
+        List<BidResponse> bids = bidRepository.findByAuctionIdOrderByCreatedAtDesc(id, PageRequest.of(0, safeLimit))
+                .stream()
+                .map(AuctionController::toBidResponse)
+                .toList();
+        return ResponseEntity.ok(bids);
+    }
+
+    @GetMapping("/{id}/result")
+    public ResponseEntity<AuctionResultResponse> result(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        JwtSubjectValidator.requireSubject(jwt);
+        AuctionJpaEntity auction = auctionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + id));
+
+        if (auction.getStatus() == AuctionStatus.DRAFT
+                || auction.getStatus() == AuctionStatus.SCHEDULED
+                || auction.getStatus() == AuctionStatus.LIVE) {
+            return ResponseEntity.status(409).body(new AuctionResultResponse(
+                    auction.getId(),
+                    auction.getStatus().name(),
+                    null,
+                    null,
+                    null,
+                    "result not available while auction is " + auction.getStatus().name()
+            ));
+        }
+
+        if (auction.getStatus() == AuctionStatus.CANCELLED) {
+            return ResponseEntity.ok(new AuctionResultResponse(
+                    auction.getId(),
+                    auction.getStatus().name(),
+                    null,
+                    null,
+                    null,
+                    "auction was cancelled"
+            ));
+        }
+
+        UUID winningBidId = auction.getWinningBidId();
+        if (winningBidId == null) {
+            return ResponseEntity.ok(new AuctionResultResponse(
+                    auction.getId(),
+                    auction.getStatus().name(),
+                    null,
+                    null,
+                    null,
+                    "auction closed without winner"
+            ));
+        }
+
+        BidJpaEntity winningBid = bidRepository.findById(winningBidId)
+                .orElseThrow(() -> new IllegalStateException("winning bid not found: " + winningBidId));
+        return ResponseEntity.ok(new AuctionResultResponse(
+                auction.getId(),
+                auction.getStatus().name(),
+                winningBid.getId(),
+                winningBid.getBidderId(),
+                winningBid.getAmount(),
+                null
+        ));
+    }
+
     public record CreateAuctionRequest(@NotBlank @Size(max = 255) String title,
                                        @NotBlank @Size(max = 4000) String description,
                                        @NotNull @DecimalMin("0.01") BigDecimal reservePrice,
@@ -152,6 +258,68 @@ public class AuctionController {
                                   @NotNull @DecimalMin("0.01") BigDecimal amount,
                                   @NotBlank String idempotencyKey) {}
 
+    public record AuctionResponse(UUID id,
+                                  String title,
+                                  String description,
+                                  BigDecimal reservePrice,
+                                  BigDecimal minIncrement,
+                                  OffsetDateTime startTime,
+                                  OffsetDateTime endTime,
+                                  String status,
+                                  BigDecimal currentPrice,
+                                  UUID winningBidId) {}
+
+    public record BidResponse(UUID id,
+                              UUID auctionId,
+                              String bidderId,
+                              BigDecimal amount,
+                              Long sequenceNumber,
+                              String idempotencyKey,
+                              String status,
+                              String rejectReason,
+                              OffsetDateTime createdAt) {}
+
+    public record AuctionResultResponse(UUID auctionId,
+                                        String status,
+                                        UUID winningBidId,
+                                        String winnerBidderId,
+                                        BigDecimal winningAmount,
+                                        String message) {}
+
     public record PlaceBidResponse(String status, String rejectReason) {}
+
+    private static AuctionResponse toAuctionResponse(AuctionJpaEntity auction) {
+        return new AuctionResponse(
+                auction.getId(),
+                auction.getTitle(),
+                auction.getDescription(),
+                auction.getReservePrice(),
+                auction.getMinIncrement(),
+                auction.getStartTime(),
+                auction.getEndTime(),
+                auction.getStatus().name(),
+                auction.getCurrentPrice(),
+                auction.getWinningBidId());
+    }
+
+    private static BidResponse toBidResponse(BidJpaEntity bid) {
+        return new BidResponse(
+                bid.getId(),
+                bid.getAuctionId(),
+                bid.getBidderId(),
+                bid.getAmount(),
+                bid.getSequenceNumber(),
+                bid.getIdempotencyKey(),
+                bid.getBidStatus().name(),
+                bid.getRejectReason(),
+                bid.getCreatedAt());
+    }
+
+    private static int normalizeLimit(int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be > 0");
+        }
+        return Math.min(limit, 200);
+    }
 
 }

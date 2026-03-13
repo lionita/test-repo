@@ -103,6 +103,43 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
   /api/auctions:
+    get:
+      summary: List auctions
+      operationId: listAuctions
+      tags: [Auctions]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, SCHEDULED, LIVE, CLOSED, SETTLED, CANCELLED]
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Auctions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuctionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       summary: Create an auction
       description: Creates an auction in `DRAFT` state.
@@ -126,6 +163,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateAuctionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auctions/{id}:
+    get:
+      summary: Get auction by id
+      operationId: getAuctionById
+      tags: [Auctions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Auction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -211,6 +271,33 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
   /api/auctions/{auctionId}/bids:
+    get:
+      summary: List bids for an auction
+      operationId: listAuctionBids
+      tags: [Bids]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Auction bids
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BidResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       summary: Place a bid
       description: Requires `bid.write` scope. `idempotencyKey` must be unique per `bidderId`.
@@ -241,6 +328,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PlaceBidResponse'
+  /api/auctions/{id}/result:
+    get:
+      summary: Get auction result
+      operationId: getAuctionResult
+      tags: [Auctions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Auction result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResultResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Result not available yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResultResponse'
 components:
   securitySchemes:
     bearerAuth:
@@ -310,6 +426,40 @@ components:
         auctionId:
           type: string
           format: uuid
+    AuctionResponse:
+      type: object
+      required: [id, title, description, reservePrice, minIncrement, startTime, endTime, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        reservePrice:
+          type: number
+          format: double
+        minIncrement:
+          type: number
+          format: double
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED, LIVE, CLOSED, SETTLED, CANCELLED]
+        currentPrice:
+          type: number
+          format: double
+          nullable: true
+        winningBidId:
+          type: string
+          format: uuid
+          nullable: true
     OnboardBidderRequest:
       type: object
       required: [firstName, lastName, email, nationalId, purchasingAuthorizationLimit]
@@ -400,6 +550,60 @@ components:
           type: string
           enum: [ACCEPTED, REJECTED]
         rejectReason:
+          type: string
+          nullable: true
+    BidResponse:
+      type: object
+      required: [id, auctionId, bidderId, amount, idempotencyKey, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        auctionId:
+          type: string
+          format: uuid
+        bidderId:
+          type: string
+        amount:
+          type: number
+          format: double
+        sequenceNumber:
+          type: integer
+          format: int64
+          nullable: true
+        idempotencyKey:
+          type: string
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        rejectReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AuctionResultResponse:
+      type: object
+      required: [auctionId, status]
+      properties:
+        auctionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED, LIVE, CLOSED, SETTLED, CANCELLED]
+        winningBidId:
+          type: string
+          format: uuid
+          nullable: true
+        winnerBidderId:
+          type: string
+          nullable: true
+        winningAmount:
+          type: number
+          format: double
+          nullable: true
+        message:
           type: string
           nullable: true
     ErrorResponse:

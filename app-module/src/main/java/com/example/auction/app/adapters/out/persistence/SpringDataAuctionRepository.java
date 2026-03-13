@@ -3,6 +3,7 @@ package com.example.auction.app.adapters.out.persistence;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.repository.query.Param;
 
 import jakarta.persistence.LockModeType;
@@ -17,4 +18,17 @@ public interface SpringDataAuctionRepository extends JpaRepository<AuctionJpaEnt
     Optional<AuctionJpaEntity> findByIdForUpdate(@Param("id") UUID id);
     @Query("select a from AuctionJpaEntity a where a.status = com.example.auction.auction.domain.AuctionStatus.LIVE and a.endTime <= :threshold")
     List<AuctionJpaEntity> findLiveEndingAtOrBefore(@Param("threshold") OffsetDateTime threshold);
+
+    @Query("""
+            select a
+            from AuctionJpaEntity a
+            where (:status is null or a.status = :status)
+              and (:query is null
+                   or lower(a.title) like lower(concat('%', :query, '%'))
+                   or lower(a.description) like lower(concat('%', :query, '%')))
+            order by a.startTime desc
+            """)
+    List<AuctionJpaEntity> search(@Param("status") com.example.auction.auction.domain.AuctionStatus status,
+                                  @Param("query") String query,
+                                  Pageable pageable);
 }

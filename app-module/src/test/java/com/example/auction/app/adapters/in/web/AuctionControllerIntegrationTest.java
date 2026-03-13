@@ -21,6 +21,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -134,6 +135,128 @@ class AuctionControllerIntegrationTest {
                                 """))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("X-Correlation-Id", "corr-it-123"));
+    }
+
+    @Test
+    void getAuctionById_returnsAuctionPayload() throws Exception {
+        UUID auctionId = createAuction();
+
+        String response = mockMvc.perform(get("/api/auctions/{id}", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode body = objectMapper.readTree(response);
+        assertThat(body.get("id").asText()).isEqualTo(auctionId.toString());
+        assertThat(body.get("status").asText()).isEqualTo("DRAFT");
+    }
+
+    @Test
+    void listAuctions_filtersByStatusAndQuery() throws Exception {
+        UUID liveAuction = createAuction(
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
+        startAuction(liveAuction);
+        createAuction(
+                OffsetDateTime.now().plusDays(1),
+                OffsetDateTime.now().plusDays(2));
+
+        String response = mockMvc.perform(get("/api/auctions")
+                        .param("status", "LIVE")
+                        .param("query", "Vintage")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode body = objectMapper.readTree(response);
+        assertThat(body.isArray()).isTrue();
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).get("id").asText()).isEqualTo(liveAuction.toString());
+    }
+
+    @Test
+    void getAuctionBids_returnsLimitedList() throws Exception {
+        UUID auctionId = createAuction(
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
+        startAuction(auctionId);
+        String bidderId = onboardBidder("1000.00");
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/bids", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject(bidderId).claim("scope", "bid.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bidderId": "%s",
+                                  "amount": 105.00,
+                                  "idempotencyKey": "idem-get-1"
+                                }
+                                """.formatted(bidderId)))
+                .andExpect(status().isAccepted());
+
+        String response = mockMvc.perform(get("/api/auctions/{id}/bids", auctionId)
+                        .param("limit", "1")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode body = objectMapper.readTree(response);
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).get("status").asText()).isEqualTo("ACCEPTED");
+    }
+
+    @Test
+    void getAuctionResult_returnsWinnerAfterClose() throws Exception {
+        UUID auctionId = createAuction(
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
+        startAuction(auctionId);
+        String bidderId = onboardBidder("1000.00");
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/bids", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject(bidderId).claim("scope", "bid.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bidderId": "%s",
+                                  "amount": 105.00,
+                                  "idempotencyKey": "idem-result-1"
+                                }
+                                """.formatted(bidderId)))
+                .andExpect(status().isAccepted());
+
+        var auction = auctionRepository.findById(auctionId).orElseThrow();
+        auction.setEndTime(OffsetDateTime.now().minusSeconds(1));
+        auctionRepository.save(auction);
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/close", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write"))))
+                .andExpect(status().isNoContent());
+
+        String response = mockMvc.perform(get("/api/auctions/{id}/result", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode body = objectMapper.readTree(response);
+        assertThat(body.get("status").asText()).isEqualTo("CLOSED");
+        assertThat(body.get("winningBidId").isNull()).isFalse();
+        assertThat(body.get("winnerBidderId").asText()).isEqualTo(bidderId);
     }
 
     @Test
