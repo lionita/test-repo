@@ -10,9 +10,13 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+        default_schema: auction
+    show-sql: false
   flyway:
     enabled: true
+    baselineOnMigrate: true
     locations: classpath:db/migration
+    schemas: auction
   security:
     oauth2:
       resourceserver:

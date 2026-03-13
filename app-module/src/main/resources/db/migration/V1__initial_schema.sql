@@ -1,4 +1,6 @@
-CREATE TABLE auctions (
+CREATE SCHEMA IF NOT EXISTS auction;
+
+CREATE TABLE auction.auctions (
     id UUID PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description VARCHAR(4000) NOT NULL,
@@ -17,7 +19,7 @@ CREATE TABLE auctions (
         CHECK (end_time > start_time)
 );
 
-CREATE TABLE bidders (
+CREATE TABLE auction.bidders (
     id VARCHAR(255) PRIMARY KEY,
     first_name VARCHAR(100) NOT NULL,
     last_name VARCHAR(100) NOT NULL,
@@ -31,7 +33,7 @@ CREATE TABLE bidders (
         CHECK (purchasing_authorization_limit >= 0)
 );
 
-CREATE TABLE bids (
+CREATE TABLE auction.bids (
     id UUID PRIMARY KEY,
     auction_id UUID NOT NULL,
     bidder_id VARCHAR(255) NOT NULL,
@@ -43,8 +45,8 @@ CREATE TABLE bids (
     created_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT uq_bid_auction_sequence UNIQUE (auction_id, sequence_number),
     CONSTRAINT uq_bidder_idempotency UNIQUE (bidder_id, idempotency_key),
-    CONSTRAINT fk_bids_auction FOREIGN KEY (auction_id) REFERENCES auctions(id),
-    CONSTRAINT fk_bids_bidder FOREIGN KEY (bidder_id) REFERENCES bidders(id),
+    CONSTRAINT fk_bids_auction FOREIGN KEY (auction_id) REFERENCES auction.auctions(id),
+    CONSTRAINT fk_bids_bidder FOREIGN KEY (bidder_id) REFERENCES auction.bidders(id),
     CONSTRAINT chk_bids_amount_positive CHECK (amount > 0),
     CONSTRAINT chk_bids_sequence_positive CHECK (sequence_number IS NULL OR sequence_number > 0),
     CONSTRAINT chk_bids_status CHECK (bid_status IN ('ACCEPTED', 'REJECTED')),
@@ -58,11 +60,11 @@ CREATE TABLE bids (
     )
 );
 
-ALTER TABLE auctions
+ALTER TABLE auction.auctions
     ADD CONSTRAINT fk_auctions_winning_bid
-    FOREIGN KEY (winning_bid_id) REFERENCES bids(id);
+    FOREIGN KEY (winning_bid_id) REFERENCES auction.bids(id);
 
-CREATE TABLE outbox_events (
+CREATE TABLE auction.outbox_events (
     id UUID PRIMARY KEY,
     event_type VARCHAR(255) NOT NULL,
     aggregate_id UUID NOT NULL,
@@ -77,11 +79,11 @@ CREATE TABLE outbox_events (
 );
 
 CREATE INDEX idx_auctions_status_end_time
-    ON auctions (status, end_time);
+    ON auction.auctions (status, end_time);
 
 CREATE INDEX idx_bids_auction_amount_sequence
-    ON bids (auction_id, bid_status, amount DESC, sequence_number ASC);
+    ON auction.bids (auction_id, bid_status, amount DESC, sequence_number ASC);
 
 CREATE INDEX idx_outbox_events_ready
-    ON outbox_events (next_attempt_at, created_at)
+    ON auction.outbox_events (next_attempt_at, created_at)
     WHERE published_at IS NULL AND dead_lettered_at IS NULL;

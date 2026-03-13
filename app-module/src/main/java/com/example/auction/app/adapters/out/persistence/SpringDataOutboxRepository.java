@@ -11,7 +11,7 @@ import java.util.UUID;
 public interface SpringDataOutboxRepository extends JpaRepository<OutboxEventJpaEntity, UUID> {
     @Query(value = """
             select *
-            from outbox_events
+            from auction.outbox_events
             where published_at is null
               and dead_lettered_at is null
               and (next_attempt_at is null or next_attempt_at <= :now)

@@ -8,7 +8,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "auctions")
+@Table(name = "auctions", schema = "auction")
 public class AuctionJpaEntity {
     @Id
     private UUID id;

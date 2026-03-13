@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 @Entity
-@Table(name = "bidders")
+@Table(name = "bidders", schema = "auction")
 public class BidderJpaEntity {
     @Id
     @Column(nullable = false, length = 255)

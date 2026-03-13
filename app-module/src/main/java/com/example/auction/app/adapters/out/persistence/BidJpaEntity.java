@@ -8,7 +8,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "bids", uniqueConstraints = {
+@Table(name = "bids", schema = "auction", uniqueConstraints = {
         @UniqueConstraint(name = "uq_bid_auction_sequence", columnNames = {"auctionId", "sequenceNumber"}),
         @UniqueConstraint(name = "uq_bidder_idempotency", columnNames = {"bidderId", "idempotencyKey"})
 })
