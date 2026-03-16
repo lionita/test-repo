@@ -184,8 +184,8 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
 
 
     @Override
-    public Optional<BidDecision> findByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey) {
-        return bidRepository.findByBidderIdAndIdempotencyKey(bidderId, idempotencyKey)
+    public Optional<BidDecision> findByAuctionIdAndBidderIdAndIdempotencyKey(UUID auctionId, String bidderId, String idempotencyKey) {
+        return bidRepository.findByAuctionIdAndBidderIdAndIdempotencyKey(auctionId, bidderId, idempotencyKey)
                 .map(b -> new BidDecision(b.getBidStatus(), b.getRejectReason()));
     }
 

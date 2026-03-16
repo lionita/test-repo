@@ -11,7 +11,7 @@ public interface BidRepositoryPort {
     record BidDecision(BidStatus status, String rejectReason) {}
 
     void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, Long sequenceNumber, BidStatus bidStatus, String rejectReason);
-    Optional<BidDecision> findByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey);
+    Optional<BidDecision> findByAuctionIdAndBidderIdAndIdempotencyKey(UUID auctionId, String bidderId, String idempotencyKey);
     long nextSequence(UUID auctionId);
     Optional<WinningBid> findWinningBid(UUID auctionId);
 }
