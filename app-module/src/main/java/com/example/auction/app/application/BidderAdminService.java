@@ -4,6 +4,7 @@ import com.example.auction.app.adapters.out.persistence.BidderJpaEntity;
 import com.example.auction.app.adapters.out.persistence.SpringDataBidderRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -37,13 +38,14 @@ public class BidderAdminService {
         return bidderRepository.save(bidder);
     }
 
+    @Transactional
     public BidderJpaEntity update(String bidderId,
                                   String firstName,
                                   String lastName,
                                   String email,
                                   String nationalId,
                                   BigDecimal purchasingAuthorizationLimit) {
-        BidderJpaEntity bidder = findActiveBidder(bidderId);
+        BidderJpaEntity bidder = findActiveBidderForUpdate(bidderId);
         bidder.setFirstName(firstName);
         bidder.setLastName(lastName);
         bidder.setEmail(email);
@@ -52,20 +54,23 @@ public class BidderAdminService {
         return bidderRepository.save(bidder);
     }
 
+    @Transactional
     public void block(String bidderId) {
-        BidderJpaEntity bidder = findActiveBidder(bidderId);
+        BidderJpaEntity bidder = findActiveBidderForUpdate(bidderId);
         bidder.setBlockedUntil(OffsetDateTime.now().plusMonths(blockDurationMonths));
         bidderRepository.save(bidder);
     }
 
+    @Transactional
     public void unblock(String bidderId) {
-        BidderJpaEntity bidder = findActiveBidder(bidderId);
+        BidderJpaEntity bidder = findActiveBidderForUpdate(bidderId);
         bidder.setBlockedUntil(null);
         bidderRepository.save(bidder);
     }
 
+    @Transactional
     public void softDelete(String bidderId) {
-        BidderJpaEntity bidder = bidderRepository.findById(bidderId)
+        BidderJpaEntity bidder = bidderRepository.findByIdForUpdate(bidderId)
                 .orElseThrow(() -> new IllegalArgumentException("bidder not found: " + bidderId));
         if (bidder.getDeletedAt() == null) {
             bidder.setDeletedAt(OffsetDateTime.now());
@@ -73,8 +78,8 @@ public class BidderAdminService {
         }
     }
 
-    private BidderJpaEntity findActiveBidder(String bidderId) {
-        BidderJpaEntity bidder = bidderRepository.findById(bidderId)
+    private BidderJpaEntity findActiveBidderForUpdate(String bidderId) {
+        BidderJpaEntity bidder = bidderRepository.findByIdForUpdate(bidderId)
                 .orElseThrow(() -> new IllegalArgumentException("bidder not found: " + bidderId));
         if (bidder.getDeletedAt() != null) {
             throw new IllegalArgumentException("bidder is deleted: " + bidderId);

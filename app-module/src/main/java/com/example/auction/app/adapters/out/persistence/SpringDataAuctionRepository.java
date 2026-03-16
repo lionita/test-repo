@@ -16,8 +16,13 @@ public interface SpringDataAuctionRepository extends JpaRepository<AuctionJpaEnt
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from AuctionJpaEntity a where a.id = :id")
     Optional<AuctionJpaEntity> findByIdForUpdate(@Param("id") UUID id);
+
     @Query("select a from AuctionJpaEntity a where a.status = com.example.auction.auction.domain.AuctionStatus.LIVE and a.endTime <= :threshold")
-    List<AuctionJpaEntity> findLiveEndingAtOrBefore(@Param("threshold") OffsetDateTime threshold);
+    List<AuctionJpaEntity> findLiveEndingAtOrBefore(@Param("threshold") OffsetDateTime threshold, Pageable pageable);
+
+    default List<AuctionJpaEntity> findLiveEndingAtOrBefore(@Param("threshold") OffsetDateTime threshold) {
+        return findLiveEndingAtOrBefore(threshold, Pageable.unpaged());
+    }
 
     @Query("""
             select a
@@ -26,7 +31,6 @@ public interface SpringDataAuctionRepository extends JpaRepository<AuctionJpaEnt
               and (:query is null
                    or lower(a.title) like lower(concat('%', :query, '%'))
                    or lower(a.description) like lower(concat('%', :query, '%')))
-            order by a.startTime desc
             """)
     List<AuctionJpaEntity> search(@Param("status") com.example.auction.auction.domain.AuctionStatus status,
                                   @Param("query") String query,

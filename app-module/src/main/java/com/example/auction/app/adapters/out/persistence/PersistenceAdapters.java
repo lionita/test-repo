@@ -15,11 +15,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +30,8 @@ import java.util.UUID;
 @Component
 public class PersistenceAdapters implements AuctionRepositoryPort, BidRepositoryPort, OutboxPort {
     private static final Logger log = LoggerFactory.getLogger(PersistenceAdapters.class);
+    private static final int LIVE_AUCTION_SCAN_BATCH_SIZE = 500;
+    private static final int OUTBOX_PUBLISH_BATCH_SIZE = 200;
 
     private final SpringDataAuctionRepository auctionRepository;
     private final SpringDataBidRepository bidRepository;
@@ -148,20 +153,32 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
 
     @Override
     public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) {
-        return auctionRepository.findLiveEndingAtOrBefore(threshold)
-                .stream()
-                .map(e -> new Auction(
-                        e.getId(),
-                        e.getTitle(),
-                        e.getDescription(),
-                        e.getReservePrice(),
-                        e.getMinIncrement(),
-                        e.getStartTime(),
-                        e.getEndTime(),
-                        e.getStatus(),
-                        e.getCurrentPrice(),
-                        e.getWinningBidId()))
-                .toList();
+        List<Auction> auctions = new ArrayList<>();
+        Sort sort = Sort.by(Sort.Order.asc("endTime"), Sort.Order.asc("id"));
+        int page = 0;
+        while (true) {
+            List<AuctionJpaEntity> batch = auctionRepository.findLiveEndingAtOrBefore(
+                    threshold,
+                    PageRequest.of(page, LIVE_AUCTION_SCAN_BATCH_SIZE, sort));
+            auctions.addAll(batch.stream()
+                    .map(e -> new Auction(
+                            e.getId(),
+                            e.getTitle(),
+                            e.getDescription(),
+                            e.getReservePrice(),
+                            e.getMinIncrement(),
+                            e.getStartTime(),
+                            e.getEndTime(),
+                            e.getStatus(),
+                            e.getCurrentPrice(),
+                            e.getWinningBidId()))
+                    .toList());
+            if (batch.size() < LIVE_AUCTION_SCAN_BATCH_SIZE) {
+                break;
+            }
+            page++;
+        }
+        return auctions;
     }
 
     @Override
@@ -179,10 +196,15 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
         bidRepository.save(entity);
     }
 
+    @Override
+    public void flush() {
+        bidRepository.flush();
+    }
+
 
     @Override
-    public Optional<BidDecision> findByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey) {
-        return bidRepository.findByBidderIdAndIdempotencyKey(bidderId, idempotencyKey)
+    public Optional<BidDecision> findByAuctionIdAndBidderIdAndIdempotencyKey(UUID auctionId, String bidderId, String idempotencyKey) {
+        return bidRepository.findByAuctionIdAndBidderIdAndIdempotencyKey(auctionId, bidderId, idempotencyKey)
                 .map(b -> new BidDecision(b.getBidStatus(), b.getRejectReason()));
     }
 
@@ -219,7 +241,7 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
         Timer.Sample sample = Timer.start(meterRegistry);
         OffsetDateTime now = OffsetDateTime.now();
         int processed = 0;
-        for (OutboxEventJpaEntity event : outboxRepository.claimReadyToPublish(now)) {
+        for (OutboxEventJpaEntity event : outboxRepository.claimReadyToPublish(now, PageRequest.of(0, OUTBOX_PUBLISH_BATCH_SIZE))) {
             processed++;
             if ("bid.placed".equals(event.getEventType()) || "auction.closed".equals(event.getEventType())) {
                 try {

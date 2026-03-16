@@ -255,6 +255,24 @@ class AuctionCommandServiceTest {
     }
 
     @Test
+    void startRejectsWhenAfterScheduledEndTime() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var bids = new InMemBids();
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.SCHEDULED,
+                null, null));
+
+        Clock afterEnd = Clock.fixed(Instant.parse("2026-01-01T12:00:01Z"), ZoneOffset.UTC);
+        var service = new AuctionCommandService(auctions, outbox, bids, afterEnd);
+
+        assertThrows(IllegalStateException.class, () -> service.start(auctionId));
+        assertTrue(outbox.events.isEmpty());
+        assertEquals(AuctionStatus.SCHEDULED, auctions.findById(auctionId).orElseThrow().status());
+    }
+
+    @Test
     void closeRejectsWhenBeforeScheduledEndTime() {
         var auctions = new InMemAuctions();
         var outbox = new InMemOutbox();

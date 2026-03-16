@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS auction.bids (
     reject_reason VARCHAR(1024),
     created_at TIMESTAMPTZ NOT NULL,
     CONSTRAINT uq_bid_auction_sequence UNIQUE (auction_id, sequence_number),
-    CONSTRAINT uq_bidder_idempotency UNIQUE (bidder_id, idempotency_key),
+    CONSTRAINT uq_bidder_idempotency UNIQUE (auction_id, bidder_id, idempotency_key),
     CONSTRAINT fk_bids_auction FOREIGN KEY (auction_id) REFERENCES auction.auctions(id),
     CONSTRAINT fk_bids_bidder FOREIGN KEY (bidder_id) REFERENCES auction.bidders(id),
     CONSTRAINT chk_bids_amount_positive CHECK (amount > 0),
