@@ -16,11 +16,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -151,20 +153,32 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
 
     @Override
     public List<Auction> findLiveEndingAtOrBefore(OffsetDateTime threshold) {
-        return auctionRepository.findLiveEndingAtOrBefore(threshold, PageRequest.of(0, LIVE_AUCTION_SCAN_BATCH_SIZE))
-                .stream()
-                .map(e -> new Auction(
-                        e.getId(),
-                        e.getTitle(),
-                        e.getDescription(),
-                        e.getReservePrice(),
-                        e.getMinIncrement(),
-                        e.getStartTime(),
-                        e.getEndTime(),
-                        e.getStatus(),
-                        e.getCurrentPrice(),
-                        e.getWinningBidId()))
-                .toList();
+        List<Auction> auctions = new ArrayList<>();
+        Sort sort = Sort.by(Sort.Order.asc("endTime"), Sort.Order.asc("id"));
+        int page = 0;
+        while (true) {
+            List<AuctionJpaEntity> batch = auctionRepository.findLiveEndingAtOrBefore(
+                    threshold,
+                    PageRequest.of(page, LIVE_AUCTION_SCAN_BATCH_SIZE, sort));
+            auctions.addAll(batch.stream()
+                    .map(e -> new Auction(
+                            e.getId(),
+                            e.getTitle(),
+                            e.getDescription(),
+                            e.getReservePrice(),
+                            e.getMinIncrement(),
+                            e.getStartTime(),
+                            e.getEndTime(),
+                            e.getStatus(),
+                            e.getCurrentPrice(),
+                            e.getWinningBidId()))
+                    .toList());
+            if (batch.size() < LIVE_AUCTION_SCAN_BATCH_SIZE) {
+                break;
+            }
+            page++;
+        }
+        return auctions;
     }
 
     @Override
@@ -180,6 +194,11 @@ public class PersistenceAdapters implements AuctionRepositoryPort, BidRepository
         entity.setRejectReason(rejectReason);
         entity.setCreatedAt(OffsetDateTime.now());
         bidRepository.save(entity);
+    }
+
+    @Override
+    public void flush() {
+        bidRepository.flush();
     }
 
 

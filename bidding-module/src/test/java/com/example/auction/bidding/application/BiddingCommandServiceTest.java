@@ -214,7 +214,7 @@ class BiddingCommandServiceTest {
         var bidderAuthorization = new InMemBidderAuthorization();
         UUID id = UUID.randomUUID();
         auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.CLOSED, null, null));
-        bids.throwIdempotencyConflictOnNextSave = true;
+        bids.throwIdempotencyConflictOnNextFlush = true;
         bids.decisions.put(id + ":u1:k1", new BidRepositoryPort.BidDecision(BidStatus.REJECTED, "auction is not live"));
 
         var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
@@ -307,6 +307,7 @@ class BiddingCommandServiceTest {
         Map<String, BidDecision> decisions = new HashMap<>();
         List<String> savedBids = new ArrayList<>();
         boolean throwIdempotencyConflictOnNextSave = false;
+        boolean throwIdempotencyConflictOnNextFlush = false;
 
         public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, Long sequenceNumber, BidStatus bidStatus, String rejectReason) {
             if (throwIdempotencyConflictOnNextSave) {
@@ -318,6 +319,14 @@ class BiddingCommandServiceTest {
             }
             decisions.put(auctionId + ":" + bidderId + ":" + idempotencyKey, new BidDecision(bidStatus, rejectReason));
             savedBids.add(auctionId + ":" + bidderId + ":" + idempotencyKey);
+        }
+
+        @Override
+        public void flush() {
+            if (throwIdempotencyConflictOnNextFlush) {
+                throwIdempotencyConflictOnNextFlush = false;
+                throw new DataIntegrityViolationException("duplicate key value violates unique constraint \"uq_bidder_idempotency\"");
+            }
         }
 
         public Optional<BidDecision> findByAuctionIdAndBidderIdAndIdempotencyKey(UUID auctionId, String bidderId, String idempotencyKey) {

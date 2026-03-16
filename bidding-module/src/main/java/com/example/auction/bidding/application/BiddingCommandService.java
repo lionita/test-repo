@@ -125,6 +125,7 @@ public class BiddingCommandService {
                                             String rejectReason) {
         try {
             bidRepository.save(auctionId, bidderId, amount, idempotencyKey, sequenceNumber, status, rejectReason);
+            bidRepository.flush();
             return true;
         } catch (DataIntegrityViolationException ex) {
             if (!isIdempotencyConflict(ex)) {
