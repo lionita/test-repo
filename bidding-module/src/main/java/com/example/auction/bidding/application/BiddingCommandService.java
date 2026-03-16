@@ -8,6 +8,7 @@ import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.ports.BidRepositoryPort;
 import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -76,7 +77,9 @@ public class BiddingCommandService {
         }
 
         long seq = bidRepository.nextSequence(auctionId);
-        bidRepository.save(auctionId, bidderId, amount, idempotencyKey, seq, BidStatus.ACCEPTED, null);
+        if (!saveBidOrReplayDecision(auctionId, bidderId, amount, idempotencyKey, seq, BidStatus.ACCEPTED, null)) {
+            return replayExistingDecision(bidderId, idempotencyKey);
+        }
         auctionRepository.save(new Auction(
                 auction.id(),
                 auction.title(),
@@ -94,9 +97,47 @@ public class BiddingCommandService {
     }
 
     private BidPlacementResult reject(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, String rejectReason) {
-        bidRepository.save(auctionId, bidderId, amount, idempotencyKey, null, BidStatus.REJECTED, rejectReason);
+        if (!saveBidOrReplayDecision(auctionId, bidderId, amount, idempotencyKey, null, BidStatus.REJECTED, rejectReason)) {
+            return replayExistingDecision(bidderId, idempotencyKey);
+        }
         outboxPort.append("bid.rejected", auctionId,
                 "{\"auctionId\":\"" + auctionId + "\",\"amount\":" + amount + ",\"bidderId\":\"" + bidderId + "\",\"reason\":\"" + rejectReason + "\"}");
         return new BidPlacementResult(BidStatus.REJECTED, rejectReason);
+    }
+
+    private boolean saveBidOrReplayDecision(UUID auctionId,
+                                            String bidderId,
+                                            BigDecimal amount,
+                                            String idempotencyKey,
+                                            Long sequenceNumber,
+                                            BidStatus status,
+                                            String rejectReason) {
+        try {
+            bidRepository.save(auctionId, bidderId, amount, idempotencyKey, sequenceNumber, status, rejectReason);
+            return true;
+        } catch (DataIntegrityViolationException ex) {
+            if (!isIdempotencyConflict(ex)) {
+                throw ex;
+            }
+            return false;
+        }
+    }
+
+    private BidPlacementResult replayExistingDecision(String bidderId, String idempotencyKey) {
+        var existing = bidRepository.findByBidderIdAndIdempotencyKey(bidderId, idempotencyKey);
+        if (existing.isEmpty()) {
+            throw new IllegalStateException("idempotency conflict detected but existing decision was not found");
+        }
+        return new BidPlacementResult(existing.get().status(), existing.get().rejectReason());
+    }
+
+    private boolean isIdempotencyConflict(DataIntegrityViolationException ex) {
+        for (Throwable current = ex; current != null; current = current.getCause()) {
+            String message = current.getMessage();
+            if (message != null && message.contains("uq_bidder_idempotency")) {
+                return true;
+            }
+        }
+        return false;
     }
 }

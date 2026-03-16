@@ -18,6 +18,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -29,6 +30,7 @@ import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -91,11 +93,16 @@ public class AuctionController {
     public ResponseEntity<List<AuctionResponse>> list(@AuthenticationPrincipal Jwt jwt,
                                                       @RequestParam(required = false) AuctionStatus status,
                                                       @RequestParam(required = false) String query,
+                                                      @RequestParam(defaultValue = "0") int page,
+                                                      @RequestParam(defaultValue = "startTime") String sortBy,
+                                                      @RequestParam(defaultValue = "desc") String sortDir,
                                                       @RequestParam(defaultValue = "50") int limit) {
         JwtSubjectValidator.requireSubject(jwt);
+        int safePage = normalizePage(page);
         int safeLimit = normalizeLimit(limit);
+        Sort sort = auctionSort(sortBy, sortDir);
         String normalizedQuery = (query == null || query.isBlank()) ? null : query.trim();
-        List<AuctionResponse> items = auctionRepository.search(status, normalizedQuery, PageRequest.of(0, safeLimit))
+        List<AuctionResponse> items = auctionRepository.search(status, normalizedQuery, PageRequest.of(safePage, safeLimit, sort))
                 .stream()
                 .map(AuctionController::toAuctionResponse)
                 .toList();
@@ -180,13 +187,18 @@ public class AuctionController {
     @GetMapping("/{id}/bids")
     public ResponseEntity<List<BidResponse>> listBids(@AuthenticationPrincipal Jwt jwt,
                                                       @PathVariable UUID id,
+                                                      @RequestParam(defaultValue = "0") int page,
+                                                      @RequestParam(defaultValue = "createdAt") String sortBy,
+                                                      @RequestParam(defaultValue = "desc") String sortDir,
                                                       @RequestParam(defaultValue = "50") int limit) {
         JwtSubjectValidator.requireSubject(jwt);
+        int safePage = normalizePage(page);
         int safeLimit = normalizeLimit(limit);
+        Sort sort = bidSort(sortBy, sortDir);
         if (!auctionRepository.existsById(id)) {
             throw new IllegalArgumentException("auction not found: " + id);
         }
-        List<BidResponse> bids = bidRepository.findByAuctionIdOrderByCreatedAtDesc(id, PageRequest.of(0, safeLimit))
+        List<BidResponse> bids = bidRepository.findByAuctionId(id, PageRequest.of(safePage, safeLimit, sort))
                 .stream()
                 .map(AuctionController::toBidResponse)
                 .toList();
@@ -320,6 +332,41 @@ public class AuctionController {
             throw new IllegalArgumentException("limit must be > 0");
         }
         return Math.min(limit, 200);
+    }
+
+    private static int normalizePage(int page) {
+        if (page < 0) {
+            throw new IllegalArgumentException("page must be >= 0");
+        }
+        return page;
+    }
+
+    private static Sort auctionSort(String sortBy, String sortDir) {
+        String property = normalizeSortProperty(sortBy, Set.of("id", "title", "startTime", "endTime", "status", "currentPrice", "reservePrice"));
+        Sort.Direction direction = parseSortDirection(sortDir);
+        return Sort.by(direction, property);
+    }
+
+    private static Sort bidSort(String sortBy, String sortDir) {
+        String property = normalizeSortProperty(sortBy, Set.of("id", "createdAt", "amount", "sequenceNumber", "bidderId", "bidStatus"));
+        Sort.Direction direction = parseSortDirection(sortDir);
+        return Sort.by(direction, property);
+    }
+
+    private static String normalizeSortProperty(String sortBy, Set<String> allowed) {
+        if (sortBy == null || sortBy.isBlank()) {
+            throw new IllegalArgumentException("sortBy is required");
+        }
+        String normalized = sortBy.trim();
+        if (!allowed.contains(normalized)) {
+            throw new IllegalArgumentException("unsupported sortBy: " + normalized);
+        }
+        return normalized;
+    }
+
+    private static Sort.Direction parseSortDirection(String sortDir) {
+        return Sort.Direction.fromOptionalString(sortDir)
+                .orElseThrow(() -> new IllegalArgumentException("sortDir must be ASC or DESC"));
     }
 
 }

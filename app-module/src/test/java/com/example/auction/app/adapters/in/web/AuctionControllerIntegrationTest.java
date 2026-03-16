@@ -181,6 +181,44 @@ class AuctionControllerIntegrationTest {
     }
 
     @Test
+    void listAuctions_supportsPageAndSort() throws Exception {
+        UUID zeta = createAuction("Zeta Camera", OffsetDateTime.now().plusDays(1), OffsetDateTime.now().plusDays(2));
+        UUID alpha = createAuction("Alpha Camera", OffsetDateTime.now().plusDays(2), OffsetDateTime.now().plusDays(3));
+
+        String firstPage = mockMvc.perform(get("/api/auctions")
+                        .param("sortBy", "title")
+                        .param("sortDir", "asc")
+                        .param("page", "0")
+                        .param("limit", "1")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode firstPageBody = objectMapper.readTree(firstPage);
+        assertThat(firstPageBody).hasSize(1);
+        assertThat(firstPageBody.get(0).get("id").asText()).isEqualTo(alpha.toString());
+
+        String secondPage = mockMvc.perform(get("/api/auctions")
+                        .param("sortBy", "title")
+                        .param("sortDir", "asc")
+                        .param("page", "1")
+                        .param("limit", "1")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode secondPageBody = objectMapper.readTree(secondPage);
+        assertThat(secondPageBody).hasSize(1);
+        assertThat(secondPageBody.get(0).get("id").asText()).isEqualTo(zeta.toString());
+    }
+
+    @Test
     void getAuctionBids_returnsLimitedList() throws Exception {
         UUID auctionId = createAuction(
                 OffsetDateTime.now().minusMinutes(1),
@@ -213,6 +251,73 @@ class AuctionControllerIntegrationTest {
         JsonNode body = objectMapper.readTree(response);
         assertThat(body).hasSize(1);
         assertThat(body.get(0).get("status").asText()).isEqualTo("ACCEPTED");
+    }
+
+    @Test
+    void getAuctionBids_supportsPageAndSort() throws Exception {
+        UUID auctionId = createAuction(
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
+        startAuction(auctionId);
+        String bidderId = onboardBidder("1000.00");
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/bids", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject(bidderId).claim("scope", "bid.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bidderId": "%s",
+                                  "amount": 105.00,
+                                  "idempotencyKey": "idem-page-sort-1"
+                                }
+                                """.formatted(bidderId)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(post("/api/auctions/{auctionId}/bids", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject(bidderId).claim("scope", "bid.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bidderId": "%s",
+                                  "amount": 110.00,
+                                  "idempotencyKey": "idem-page-sort-2"
+                                }
+                                """.formatted(bidderId)))
+                .andExpect(status().isAccepted());
+
+        String firstPage = mockMvc.perform(get("/api/auctions/{id}/bids", auctionId)
+                        .param("sortBy", "amount")
+                        .param("sortDir", "asc")
+                        .param("page", "0")
+                        .param("limit", "1")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode firstPageBody = objectMapper.readTree(firstPage);
+        assertThat(firstPageBody).hasSize(1);
+        assertThat(firstPageBody.get(0).get("amount").decimalValue()).isEqualByComparingTo("105.00");
+
+        String secondPage = mockMvc.perform(get("/api/auctions/{id}/bids", auctionId)
+                        .param("sortBy", "amount")
+                        .param("sortDir", "asc")
+                        .param("page", "1")
+                        .param("limit", "1")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("viewer-1").claim("scope", "auction.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode secondPageBody = objectMapper.readTree(secondPage);
+        assertThat(secondPageBody).hasSize(1);
+        assertThat(secondPageBody.get(0).get("amount").decimalValue()).isEqualByComparingTo("110.00");
     }
 
     @Test
@@ -358,6 +463,48 @@ class AuctionControllerIntegrationTest {
                 .andExpect(status().isForbidden());
 
         assertThat(bidderRepository.findAll()).isEmpty();
+    }
+
+    @Test
+    void listBidders_supportsPaginationAndSorting_andExcludesSoftDeleted() throws Exception {
+        String alphaId = onboardBidder("Alice", "Alpha", "alice@example.com", "NID-ALICE", "100.00");
+        String zetaId = onboardBidder("Zara", "Zulu", "zara@example.com", "NID-ZARA", "100.00");
+
+        mockMvc.perform(delete("/api/bidders/{bidderId}", zetaId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("admin-1").claim("scope", "admin.write"))))
+                .andExpect(status().isNoContent());
+
+        String response = mockMvc.perform(get("/api/bidders")
+                        .param("sortBy", "firstName")
+                        .param("sortDir", "asc")
+                        .param("page", "0")
+                        .param("limit", "10")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("admin-1").claim("scope", "admin.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode body = objectMapper.readTree(response);
+        assertThat(body).hasSize(1);
+        assertThat(body.get(0).get("bidderId").asText()).isEqualTo(alphaId);
+
+        String emptySecondPage = mockMvc.perform(get("/api/bidders")
+                        .param("sortBy", "firstName")
+                        .param("sortDir", "asc")
+                        .param("page", "1")
+                        .param("limit", "1")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("admin-1").claim("scope", "admin.write"))))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode secondPageBody = objectMapper.readTree(emptySecondPage);
+        assertThat(secondPageBody).isEmpty();
     }
 
 
@@ -532,25 +679,29 @@ class AuctionControllerIntegrationTest {
 
     private UUID createAuction() throws Exception {
         return createAuction(
-                OffsetDateTime.parse("2026-01-01T10:00:00Z"),
-                OffsetDateTime.parse("2026-01-01T12:00:00Z"));
+                OffsetDateTime.now().minusMinutes(1),
+                OffsetDateTime.now().plusHours(1));
     }
 
     private UUID createAuction(OffsetDateTime startTime, OffsetDateTime endTime) throws Exception {
+        return createAuction("Vintage Watch", startTime, endTime);
+    }
+
+    private UUID createAuction(String title, OffsetDateTime startTime, OffsetDateTime endTime) throws Exception {
         String createResponse = mockMvc.perform(post("/api/auctions")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "title": "Vintage Watch",
+                                  "title": "%s",
                                   "description": "Restored 1960s mechanical watch",
                                   "reservePrice": 100.00,
                                   "minIncrement": 5.00,
                                   "startTime": "%s",
                                   "endTime": "%s"
                                 }
-                                """.formatted(startTime, endTime)))
+                                """.formatted(title, startTime, endTime)))
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.startsWith("/api/auctions/")))
                 .andReturn()
@@ -576,19 +727,27 @@ class AuctionControllerIntegrationTest {
     }
 
     private String onboardBidder(String limit) throws Exception {
+        return onboardBidder("Jane", "Doe", "generated@example.com", "NID-GENERATED", limit);
+    }
+
+    private String onboardBidder(String firstName,
+                                 String lastName,
+                                 String email,
+                                 String nationalId,
+                                 String limit) throws Exception {
         String onboardingResponse = mockMvc.perform(post("/api/bidders/onboarding")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .jwt(jwt -> jwt.subject("admin-1").claim("scope", "admin.write")))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "firstName": "Jane",
-                                  "lastName": "Doe",
-                                  "email": "generated@example.com",
-                                  "nationalId": "NID-GENERATED",
+                                  "firstName": "%s",
+                                  "lastName": "%s",
+                                  "email": "%s",
+                                  "nationalId": "%s",
                                   "purchasingAuthorizationLimit": %s
                                 }
-                                """.formatted(limit)))
+                                """.formatted(firstName, lastName, email, nationalId, limit)))
                 .andExpect(status().isCreated())
                 .andReturn()
                 .getResponse()
@@ -596,10 +755,10 @@ class AuctionControllerIntegrationTest {
 
         JsonNode body = objectMapper.readTree(onboardingResponse);
         assertThat(body.get("bidderId").asText()).isNotBlank();
-        assertThat(body.get("firstName").asText()).isEqualTo("Jane");
-        assertThat(body.get("lastName").asText()).isEqualTo("Doe");
-        assertThat(body.get("email").asText()).isEqualTo("generated@example.com");
-        assertThat(body.get("nationalId").asText()).isEqualTo("NID-GENERATED");
+        assertThat(body.get("firstName").asText()).isEqualTo(firstName);
+        assertThat(body.get("lastName").asText()).isEqualTo(lastName);
+        assertThat(body.get("email").asText()).isEqualTo(email);
+        assertThat(body.get("nationalId").asText()).isEqualTo(nationalId);
         assertThat(body.get("blockedUntil").isNull()).isTrue();
         return body.get("bidderId").asText();
     }

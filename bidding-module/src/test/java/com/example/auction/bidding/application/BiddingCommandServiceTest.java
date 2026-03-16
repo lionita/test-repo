@@ -8,6 +8,7 @@ import com.example.auction.bidding.domain.BidStatus;
 import com.example.auction.bidding.ports.BidRepositoryPort;
 import com.example.auction.bidding.ports.BidderPurchasingAuthorizationPort;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -181,6 +182,47 @@ class BiddingCommandServiceTest {
         assertTrue(outbox.events.contains("bid.rejected"));
     }
 
+    @Test
+    void replaysAcceptedDecisionWhenSaveHitsIdempotencyConstraint() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
+        UUID id = UUID.randomUUID();
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.LIVE, null, null));
+        bids.throwIdempotencyConflictOnNextSave = true;
+        bids.decisions.put("u1:k1", new BidRepositoryPort.BidDecision(BidStatus.ACCEPTED, null));
+
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
+        BiddingCommandService.BidPlacementResult result =
+                service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
+
+        assertEquals(BidStatus.ACCEPTED, result.status());
+        assertNull(result.rejectReason());
+        assertTrue(outbox.events.isEmpty());
+        assertNull(auctions.findById(id).orElseThrow().currentPrice());
+    }
+
+    @Test
+    void replaysRejectedDecisionWhenRejectSaveHitsIdempotencyConstraint() {
+        var auctions = new InMemAuctions();
+        var bids = new InMemBids();
+        var outbox = new InMemOutbox();
+        var bidderAuthorization = new InMemBidderAuthorization();
+        UUID id = UUID.randomUUID();
+        auctions.save(new Auction(id, "Test auction", "desc", new BigDecimal("100.00"), new BigDecimal("10.00"), OffsetDateTime.now(), OffsetDateTime.now().plusHours(1), AuctionStatus.CLOSED, null, null));
+        bids.throwIdempotencyConflictOnNextSave = true;
+        bids.decisions.put("u1:k1", new BidRepositoryPort.BidDecision(BidStatus.REJECTED, "auction is not live"));
+
+        var service = new BiddingCommandService(auctions, bids, outbox, bidderAuthorization);
+        BiddingCommandService.BidPlacementResult result =
+                service.placeBid(id, "u1", new BigDecimal("100.00"), "k1");
+
+        assertEquals(BidStatus.REJECTED, result.status());
+        assertEquals("auction is not live", result.rejectReason());
+        assertTrue(outbox.events.isEmpty());
+    }
+
     static class InMemAuctions implements AuctionRepositoryPort {
         Map<UUID, Auction> data = new HashMap<>();
         public Auction save(Auction auction) { data.put(auction.id(), auction); return auction; }
@@ -218,8 +260,13 @@ class BiddingCommandServiceTest {
         Map<UUID, Long> seq = new HashMap<>();
         Map<String, BidDecision> decisions = new HashMap<>();
         List<String> savedBids = new ArrayList<>();
+        boolean throwIdempotencyConflictOnNextSave = false;
 
         public void save(UUID auctionId, String bidderId, BigDecimal amount, String idempotencyKey, Long sequenceNumber, BidStatus bidStatus, String rejectReason) {
+            if (throwIdempotencyConflictOnNextSave) {
+                throwIdempotencyConflictOnNextSave = false;
+                throw new DataIntegrityViolationException("duplicate key value violates unique constraint \"uq_bidder_idempotency\"");
+            }
             if (sequenceNumber != null) {
                 seq.put(auctionId, sequenceNumber);
             }

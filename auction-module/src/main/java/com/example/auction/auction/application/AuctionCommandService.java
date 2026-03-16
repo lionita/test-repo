@@ -109,8 +109,12 @@ public class AuctionCommandService {
     @Transactional
     public void start(UUID auctionId) {
         Auction auction = auctionRepository.findByIdForUpdate(auctionId).orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
-        if (OffsetDateTime.now(clock).isBefore(auction.startTime())) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (now.isBefore(auction.startTime())) {
             throw new IllegalStateException("auction cannot be started before startTime");
+        }
+        if (now.isAfter(auction.endTime())) {
+            throw new IllegalStateException("auction cannot be started after endTime");
         }
         auctionRepository.save(auction.start());
         outboxPort.append("auction.started", auctionId, "{\"auctionId\":\"" + auctionId + "\"}");

@@ -14,5 +14,5 @@ public interface SpringDataBidRepository extends JpaRepository<BidJpaEntity, UUI
     long maxSequenceByAuctionId(UUID auctionId);
     Optional<BidJpaEntity> findByBidderIdAndIdempotencyKey(String bidderId, String idempotencyKey);
     Optional<BidJpaEntity> findFirstByAuctionIdAndBidStatusOrderByAmountDescSequenceNumberAsc(UUID auctionId, BidStatus bidStatus);
-    List<BidJpaEntity> findByAuctionIdOrderByCreatedAtDesc(UUID auctionId, Pageable pageable);
+    List<BidJpaEntity> findByAuctionId(UUID auctionId, Pageable pageable);
 }

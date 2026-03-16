@@ -1,5 +1,6 @@
 package com.example.auction.app.adapters.out.persistence;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,5 +19,10 @@ public interface SpringDataOutboxRepository extends JpaRepository<OutboxEventJpa
             order by created_at asc
             for update skip locked
             """, nativeQuery = true)
-    List<OutboxEventJpaEntity> claimReadyToPublish(@Param("now") OffsetDateTime now);
+    List<OutboxEventJpaEntity> claimReadyToPublish(@Param("now") OffsetDateTime now, Pageable pageable);
+
+    default List<OutboxEventJpaEntity> claimReadyToPublish(@Param("now") OffsetDateTime now) {
+        return claimReadyToPublish(now, Pageable.unpaged());
+    }
+
 }
