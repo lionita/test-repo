@@ -1,0 +1,833 @@
+openapi: 3.0.3
+info:
+  title: Auction Service API
+  version: "1.0.0"
+  description: |
+    OpenAPI specification for the auction platform REST API.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security:
+  - bearerAuth: []
+paths:
+  /api/bidders/onboarding:
+    post:
+      summary: Onboard a bidder
+      description: Requires `admin.write` scope.
+      operationId: onboardBidder
+      tags: [Bidders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OnboardBidderRequest'
+      responses:
+        '201':
+          description: Bidder onboarded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardBidderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/bidders/{bidderId}:
+    put:
+      summary: Update a bidder
+      description: Requires `admin.write` scope.
+      operationId: updateBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBidderRequest'
+      responses:
+        '200':
+          description: Bidder updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OnboardBidderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      summary: Soft delete a bidder
+      description: Requires `admin.write` scope.
+      operationId: deleteBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      responses:
+        '204':
+          description: Bidder soft-deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/bidders/{bidderId}/block:
+    post:
+      summary: Block a bidder
+      description: Blocks bidder for configured duration.
+      operationId: blockBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      responses:
+        '204':
+          description: Bidder blocked
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/bidders/{bidderId}/unblock:
+    post:
+      summary: Manually unblock a bidder
+      description: Requires `admin.write` scope.
+      operationId: unblockBidder
+      tags: [Bidders]
+      parameters:
+        - $ref: '#/components/parameters/BidderId'
+      responses:
+        '204':
+          description: Bidder unblocked
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/bidders:
+    get:
+      summary: List bidders
+      description: Returns a page of active (not soft-deleted) bidders. Supports pagination and sorting.
+      operationId: listBidders
+      tags: [Bidders]
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: Zero-based page index.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: sortBy
+          in: query
+          required: false
+          description: Field used for sorting.
+          schema:
+            type: string
+            default: createdAt
+            enum: [id, firstName, lastName, email, nationalId, purchasingAuthorizationLimit, createdAt, blockedUntil]
+        - name: sortDir
+          in: query
+          required: false
+          description: Sort direction.
+          schema:
+            type: string
+            default: desc
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: Bidders list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidderPageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auctions:
+    get:
+      summary: List auctions
+      description: Returns a page of auctions. Supports filtering, pagination, and sorting.
+      operationId: listAuctions
+      tags: [Auctions]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DRAFT, SCHEDULED, LIVE, CLOSED, SETTLED, CANCELLED]
+        - name: query
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          description: Zero-based page index.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: sortBy
+          in: query
+          required: false
+          description: Field used for sorting.
+          schema:
+            type: string
+            default: startTime
+            enum: [id, title, startTime, endTime, status, currentPrice, reservePrice]
+        - name: sortDir
+          in: query
+          required: false
+          description: Sort direction.
+          schema:
+            type: string
+            default: desc
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: Auctions list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionPageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Create an auction
+      description: Creates an auction in `DRAFT` state.
+      operationId: createAuction
+      tags: [Auctions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuctionRequest'
+      responses:
+        '201':
+          description: Auction created
+          headers:
+            Location:
+              description: URI of the created auction
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateAuctionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/auctions/{id}:
+    get:
+      summary: Get auction by id
+      operationId: getAuctionById
+      tags: [Auctions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Auction details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Update an auction
+      description: |
+        Updates auction definition fields while the auction is in `DRAFT` or `SCHEDULED`.
+        Requires `auction.write` scope.
+      operationId: updateAuction
+      tags: [Auctions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAuctionRequest'
+      responses:
+        '200':
+          description: Auction updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/start:
+    post:
+      summary: Start an auction
+      operationId: startAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction started
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/schedule:
+    post:
+      summary: Schedule an auction
+      operationId: scheduleAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction scheduled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/close:
+    post:
+      summary: Close an auction
+      operationId: closeAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction closed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/cancel:
+    post:
+      summary: Cancel an auction
+      operationId: cancelAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction cancelled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/settle:
+    post:
+      summary: Settle an auction
+      operationId: settleAuction
+      tags: [Auctions]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      responses:
+        '204':
+          description: Auction settled
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/auctions/{auctionId}/bids:
+    get:
+      summary: List bids for an auction
+      description: Returns a page of bids for the auction. Supports pagination and sorting.
+      operationId: listAuctionBids
+      tags: [Bids]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+        - name: page
+          in: query
+          required: false
+          description: Zero-based page index.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          required: false
+          description: Page size.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: sortBy
+          in: query
+          required: false
+          description: Field used for sorting.
+          schema:
+            type: string
+            default: createdAt
+            enum: [id, createdAt, amount, sequenceNumber, bidderId, bidStatus]
+        - name: sortDir
+          in: query
+          required: false
+          description: Sort direction.
+          schema:
+            type: string
+            default: desc
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: Auction bids
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidPageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      summary: Place a bid
+      description: Requires `bid.write` scope. `idempotencyKey` must be unique per (`auctionId`, `bidderId`).
+      operationId: placeBid
+      tags: [Bids]
+      parameters:
+        - $ref: '#/components/parameters/AuctionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceBidRequest'
+      responses:
+        '202':
+          description: Bid accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceBidResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Bid rejected by business rules
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceBidResponse'
+  /api/auctions/{id}/result:
+    get:
+      summary: Get auction result
+      operationId: getAuctionResult
+      tags: [Auctions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Auction result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResultResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Result not available yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResultResponse'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    AuctionId:
+      name: auctionId
+      in: path
+      required: true
+      description: Auction identifier
+      schema:
+        type: string
+        format: uuid
+    BidderId:
+      name: bidderId
+      in: path
+      required: true
+      description: Bidder identifier
+      schema:
+        type: string
+  responses:
+    BadRequest:
+      description: Invalid request payload or business validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid JWT
+    Conflict:
+      description: Business state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    CreateAuctionRequest:
+      type: object
+      required: [title, description, reservePrice, minIncrement, startTime, endTime]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 4000
+        reservePrice:
+          type: number
+          format: double
+          minimum: 0.01
+        minIncrement:
+          type: number
+          format: double
+          minimum: 0.01
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+    UpdateAuctionRequest:
+      type: object
+      required: [title, description, reservePrice, minIncrement, startTime, endTime]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 4000
+        reservePrice:
+          type: number
+          format: double
+          minimum: 0.01
+        minIncrement:
+          type: number
+          format: double
+          minimum: 0.01
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+    CreateAuctionResponse:
+      type: object
+      required: [auctionId]
+      properties:
+        auctionId:
+          type: string
+          format: uuid
+    AuctionResponse:
+      type: object
+      required: [id, title, description, reservePrice, minIncrement, startTime, endTime, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        reservePrice:
+          type: number
+          format: double
+        minIncrement:
+          type: number
+          format: double
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED, LIVE, CLOSED, SETTLED, CANCELLED]
+        currentPrice:
+          type: number
+          format: double
+          nullable: true
+        winningBidId:
+          type: string
+          format: uuid
+          nullable: true
+    OnboardBidderRequest:
+      type: object
+      required: [firstName, lastName, email, nationalId, purchasingAuthorizationLimit]
+      properties:
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        nationalId:
+          type: string
+          maxLength: 50
+        purchasingAuthorizationLimit:
+          type: number
+          format: double
+          minimum: 0.01
+    UpdateBidderRequest:
+      type: object
+      required: [firstName, lastName, email, nationalId, purchasingAuthorizationLimit]
+      properties:
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        nationalId:
+          type: string
+          maxLength: 50
+        purchasingAuthorizationLimit:
+          type: number
+          format: double
+          minimum: 0.01
+    OnboardBidderResponse:
+      type: object
+      required: [bidderId, firstName, lastName, email, nationalId, purchasingAuthorizationLimit]
+      properties:
+        bidderId:
+          type: string
+        firstName:
+          type: string
+          maxLength: 100
+        lastName:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        nationalId:
+          type: string
+          maxLength: 50
+        purchasingAuthorizationLimit:
+          type: number
+          format: double
+          minimum: 0.01
+        blockedUntil:
+          type: string
+          format: date-time
+          nullable: true
+    BidderPageResponse:
+      type: object
+      required: [items, page, limit, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardBidderResponse'
+        page:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+    PlaceBidRequest:
+      type: object
+      required: [bidderId, amount, idempotencyKey]
+      properties:
+        bidderId:
+          type: string
+        amount:
+          type: number
+          format: double
+          minimum: 0.01
+        idempotencyKey:
+          type: string
+          description: Client-generated idempotency token; must be unique per bidder.
+    PlaceBidResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        rejectReason:
+          type: string
+          nullable: true
+    BidResponse:
+      type: object
+      required: [id, auctionId, bidderId, amount, idempotencyKey, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        auctionId:
+          type: string
+          format: uuid
+        bidderId:
+          type: string
+        amount:
+          type: number
+          format: double
+        sequenceNumber:
+          type: integer
+          format: int64
+          nullable: true
+        idempotencyKey:
+          type: string
+        status:
+          type: string
+          enum: [ACCEPTED, REJECTED]
+        rejectReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    AuctionPageResponse:
+      type: object
+      required: [items, page, limit, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuctionResponse'
+        page:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+    BidPageResponse:
+      type: object
+      required: [items, page, limit, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BidResponse'
+        page:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+    AuctionResultResponse:
+      type: object
+      required: [auctionId, status]
+      properties:
+        auctionId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [DRAFT, SCHEDULED, LIVE, CLOSED, SETTLED, CANCELLED]
+        winningBidId:
+          type: string
+          format: uuid
+          nullable: true
+        winnerBidderId:
+          type: string
+          nullable: true
+        winningAmount:
+          type: number
+          format: double
+          nullable: true
+        message:
+          type: string
+          nullable: true
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
