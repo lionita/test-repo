@@ -37,6 +37,47 @@ public class AuctionCommandService {
 
     @Transactional
     public UUID create(String title, String description, BigDecimal reservePrice, BigDecimal minIncrement, OffsetDateTime startTime, OffsetDateTime endTime) {
+        validateAuctionDefinition(title, description, reservePrice, minIncrement, startTime, endTime);
+
+        UUID id = UUID.randomUUID();
+        auctionRepository.save(new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.DRAFT, null, null));
+        outboxPort.append("auction.created", id, "{\"auctionId\":\"" + id + "\"}");
+        return id;
+    }
+
+    @Transactional
+    public void update(UUID auctionId,
+                       String title,
+                       String description,
+                       BigDecimal reservePrice,
+                       BigDecimal minIncrement,
+                       OffsetDateTime startTime,
+                       OffsetDateTime endTime) {
+        validateAuctionDefinition(title, description, reservePrice, minIncrement, startTime, endTime);
+        Auction auction = auctionRepository.findByIdForUpdate(auctionId)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + auctionId));
+        if (auction.status() != AuctionStatus.DRAFT && auction.status() != AuctionStatus.SCHEDULED) {
+            throw new IllegalStateException("auction can only be updated while DRAFT or SCHEDULED");
+        }
+        auctionRepository.save(new Auction(
+                auction.id(),
+                title,
+                description,
+                reservePrice,
+                minIncrement,
+                startTime,
+                endTime,
+                auction.status(),
+                auction.currentPrice(),
+                auction.winningBidId()));
+    }
+
+    private static void validateAuctionDefinition(String title,
+                                                  String description,
+                                                  BigDecimal reservePrice,
+                                                  BigDecimal minIncrement,
+                                                  OffsetDateTime startTime,
+                                                  OffsetDateTime endTime) {
         if (title == null || title.isBlank()) throw new IllegalArgumentException("title is required");
         if (description == null || description.isBlank()) throw new IllegalArgumentException("description is required");
         if (reservePrice == null) throw new IllegalArgumentException("reservePrice is required");
@@ -46,11 +87,6 @@ public class AuctionCommandService {
         if (startTime == null) throw new IllegalArgumentException("startTime is required");
         if (endTime == null) throw new IllegalArgumentException("endTime is required");
         if (!endTime.isAfter(startTime)) throw new IllegalArgumentException("endTime must be after startTime");
-
-        UUID id = UUID.randomUUID();
-        auctionRepository.save(new Auction(id, title, description, reservePrice, minIncrement, startTime, endTime, AuctionStatus.DRAFT, null, null));
-        outboxPort.append("auction.created", id, "{\"auctionId\":\"" + id + "\"}");
-        return id;
     }
 
     @Transactional

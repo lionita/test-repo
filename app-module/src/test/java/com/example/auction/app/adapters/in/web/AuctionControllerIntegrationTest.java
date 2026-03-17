@@ -155,6 +155,61 @@ class AuctionControllerIntegrationTest {
     }
 
     @Test
+    void updateAuction_updatesEditableFieldsWhenDraft() throws Exception {
+        UUID auctionId = createAuction();
+
+        String response = mockMvc.perform(put("/api/auctions/{id}", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Updated Vintage Watch",
+                                  "description": "Updated description",
+                                  "reservePrice": 150.00,
+                                  "minIncrement": 15.00,
+                                  "startTime": "2026-01-03T10:00:00Z",
+                                  "endTime": "2026-01-03T12:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        JsonNode body = objectMapper.readTree(response);
+        assertThat(body.get("id").asText()).isEqualTo(auctionId.toString());
+        assertThat(body.get("title").asText()).isEqualTo("Updated Vintage Watch");
+        assertThat(body.get("reservePrice").decimalValue()).isEqualByComparingTo("150.00");
+
+        var persisted = auctionRepository.findById(auctionId).orElseThrow();
+        assertThat(persisted.getTitle()).isEqualTo("Updated Vintage Watch");
+        assertThat(persisted.getMinIncrement()).isEqualByComparingTo("15.00");
+    }
+
+    @Test
+    void updateAuction_returnsConflictWhenAuctionIsLive() throws Exception {
+        UUID auctionId = createAuction();
+        startAuction(auctionId);
+
+        mockMvc.perform(put("/api/auctions/{id}", auctionId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .jwt(jwt -> jwt.subject("seller-1").claim("scope", "auction.write")))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "Updated Vintage Watch",
+                                  "description": "Updated description",
+                                  "reservePrice": 150.00,
+                                  "minIncrement": 15.00,
+                                  "startTime": "2026-01-03T10:00:00Z",
+                                  "endTime": "2026-01-03T12:00:00Z"
+                                }
+                                """))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void listAuctions_filtersByStatusAndQuery() throws Exception {
         UUID liveAuction = createAuction(
                 OffsetDateTime.now().minusMinutes(1),
@@ -175,9 +230,10 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode body = objectMapper.readTree(response);
-        assertThat(body.isArray()).isTrue();
-        assertThat(body).hasSize(1);
-        assertThat(body.get(0).get("id").asText()).isEqualTo(liveAuction.toString());
+        assertThat(body.get("page").asInt()).isEqualTo(0);
+        assertThat(body.get("totalItems").asLong()).isEqualTo(1);
+        assertThat(body.get("items")).hasSize(1);
+        assertThat(body.get("items").get(0).get("id").asText()).isEqualTo(liveAuction.toString());
     }
 
     @Test
@@ -198,8 +254,11 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode firstPageBody = objectMapper.readTree(firstPage);
-        assertThat(firstPageBody).hasSize(1);
-        assertThat(firstPageBody.get(0).get("id").asText()).isEqualTo(alpha.toString());
+        assertThat(firstPageBody.get("page").asInt()).isEqualTo(0);
+        assertThat(firstPageBody.get("totalItems").asLong()).isEqualTo(2);
+        assertThat(firstPageBody.get("totalPages").asInt()).isEqualTo(2);
+        assertThat(firstPageBody.get("items")).hasSize(1);
+        assertThat(firstPageBody.get("items").get(0).get("id").asText()).isEqualTo(alpha.toString());
 
         String secondPage = mockMvc.perform(get("/api/auctions")
                         .param("sortBy", "title")
@@ -214,8 +273,11 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode secondPageBody = objectMapper.readTree(secondPage);
-        assertThat(secondPageBody).hasSize(1);
-        assertThat(secondPageBody.get(0).get("id").asText()).isEqualTo(zeta.toString());
+        assertThat(secondPageBody.get("page").asInt()).isEqualTo(1);
+        assertThat(secondPageBody.get("totalItems").asLong()).isEqualTo(2);
+        assertThat(secondPageBody.get("totalPages").asInt()).isEqualTo(2);
+        assertThat(secondPageBody.get("items")).hasSize(1);
+        assertThat(secondPageBody.get("items").get(0).get("id").asText()).isEqualTo(zeta.toString());
     }
 
     @Test
@@ -249,8 +311,10 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode body = objectMapper.readTree(response);
-        assertThat(body).hasSize(1);
-        assertThat(body.get(0).get("status").asText()).isEqualTo("ACCEPTED");
+        assertThat(body.get("page").asInt()).isEqualTo(0);
+        assertThat(body.get("totalItems").asLong()).isEqualTo(1);
+        assertThat(body.get("items")).hasSize(1);
+        assertThat(body.get("items").get(0).get("status").asText()).isEqualTo("ACCEPTED");
     }
 
     @Test
@@ -300,8 +364,11 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode firstPageBody = objectMapper.readTree(firstPage);
-        assertThat(firstPageBody).hasSize(1);
-        assertThat(firstPageBody.get(0).get("amount").decimalValue()).isEqualByComparingTo("105.00");
+        assertThat(firstPageBody.get("page").asInt()).isEqualTo(0);
+        assertThat(firstPageBody.get("totalItems").asLong()).isEqualTo(2);
+        assertThat(firstPageBody.get("totalPages").asInt()).isEqualTo(2);
+        assertThat(firstPageBody.get("items")).hasSize(1);
+        assertThat(firstPageBody.get("items").get(0).get("amount").decimalValue()).isEqualByComparingTo("105.00");
 
         String secondPage = mockMvc.perform(get("/api/auctions/{id}/bids", auctionId)
                         .param("sortBy", "amount")
@@ -316,8 +383,11 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode secondPageBody = objectMapper.readTree(secondPage);
-        assertThat(secondPageBody).hasSize(1);
-        assertThat(secondPageBody.get(0).get("amount").decimalValue()).isEqualByComparingTo("110.00");
+        assertThat(secondPageBody.get("page").asInt()).isEqualTo(1);
+        assertThat(secondPageBody.get("totalItems").asLong()).isEqualTo(2);
+        assertThat(secondPageBody.get("totalPages").asInt()).isEqualTo(2);
+        assertThat(secondPageBody.get("items")).hasSize(1);
+        assertThat(secondPageBody.get("items").get(0).get("amount").decimalValue()).isEqualByComparingTo("110.00");
     }
 
     @Test
@@ -488,8 +558,10 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode body = objectMapper.readTree(response);
-        assertThat(body).hasSize(1);
-        assertThat(body.get(0).get("bidderId").asText()).isEqualTo(alphaId);
+        assertThat(body.get("page").asInt()).isEqualTo(0);
+        assertThat(body.get("totalItems").asLong()).isEqualTo(1);
+        assertThat(body.get("items")).hasSize(1);
+        assertThat(body.get("items").get(0).get("bidderId").asText()).isEqualTo(alphaId);
 
         String emptySecondPage = mockMvc.perform(get("/api/bidders")
                         .param("sortBy", "firstName")
@@ -504,7 +576,9 @@ class AuctionControllerIntegrationTest {
                 .getContentAsString();
 
         JsonNode secondPageBody = objectMapper.readTree(emptySecondPage);
-        assertThat(secondPageBody).isEmpty();
+        assertThat(secondPageBody.get("page").asInt()).isEqualTo(1);
+        assertThat(secondPageBody.get("totalItems").asLong()).isEqualTo(1);
+        assertThat(secondPageBody.get("items")).isEmpty();
     }
 
 

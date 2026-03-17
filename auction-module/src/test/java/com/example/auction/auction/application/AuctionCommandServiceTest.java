@@ -82,6 +82,55 @@ class AuctionCommandServiceTest {
     }
 
     @Test
+    void updateDraftAuctionUpdatesEditableFields() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var service = new AuctionCommandService(auctions, outbox, new InMemBids());
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.DRAFT,
+                null, null));
+
+        service.update(
+                auctionId,
+                "Updated Watch",
+                "Updated desc",
+                new BigDecimal("120.00"),
+                new BigDecimal("10.00"),
+                OffsetDateTime.parse("2026-01-02T10:00:00Z"),
+                OffsetDateTime.parse("2026-01-02T12:00:00Z"));
+
+        Auction updated = auctions.findById(auctionId).orElseThrow();
+        assertEquals("Updated Watch", updated.title());
+        assertEquals("Updated desc", updated.description());
+        assertEquals(new BigDecimal("120.00"), updated.reservePrice());
+        assertEquals(new BigDecimal("10.00"), updated.minIncrement());
+        assertEquals(OffsetDateTime.parse("2026-01-02T10:00:00Z"), updated.startTime());
+        assertEquals(OffsetDateTime.parse("2026-01-02T12:00:00Z"), updated.endTime());
+        assertEquals(AuctionStatus.DRAFT, updated.status());
+    }
+
+    @Test
+    void updateRejectsWhenAuctionIsLive() {
+        var auctions = new InMemAuctions();
+        var outbox = new InMemOutbox();
+        var service = new AuctionCommandService(auctions, outbox, new InMemBids());
+        UUID auctionId = UUID.randomUUID();
+        auctions.save(new Auction(auctionId, "Vintage Watch", "desc", new BigDecimal("100.00"), new BigDecimal("5.00"),
+                OffsetDateTime.parse("2026-01-01T10:00:00Z"), OffsetDateTime.parse("2026-01-01T12:00:00Z"), AuctionStatus.LIVE,
+                null, null));
+
+        assertThrows(IllegalStateException.class, () -> service.update(
+                auctionId,
+                "Updated Watch",
+                "Updated desc",
+                new BigDecimal("120.00"),
+                new BigDecimal("10.00"),
+                OffsetDateTime.parse("2026-01-02T10:00:00Z"),
+                OffsetDateTime.parse("2026-01-02T12:00:00Z")));
+    }
+
+    @Test
     void createRejectsInvalidTimeWindow() {
         var service = new AuctionCommandService(new InMemAuctions(), new InMemOutbox(), new InMemBids());
         OffsetDateTime start = OffsetDateTime.parse("2026-01-01T10:00:00Z");

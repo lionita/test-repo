@@ -17,6 +17,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -81,6 +82,25 @@ public class AuctionController {
         return ResponseEntity.created(URI.create("/api/auctions/" + id)).body(Map.of("auctionId", id));
     }
 
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('SCOPE_auction.write')")
+    public ResponseEntity<AuctionResponse> update(@AuthenticationPrincipal Jwt jwt,
+                                                  @PathVariable UUID id,
+                                                  @Valid @RequestBody UpdateAuctionRequest request) {
+        JwtSubjectValidator.requireSubject(jwt);
+        auctionService.update(
+                id,
+                request.title(),
+                request.description(),
+                request.reservePrice(),
+                request.minIncrement(),
+                request.startTime(),
+                request.endTime());
+        AuctionJpaEntity updated = auctionRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("auction not found: " + id));
+        return ResponseEntity.ok(toAuctionResponse(updated));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<AuctionResponse> getById(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
         JwtSubjectValidator.requireSubject(jwt);
@@ -90,23 +110,21 @@ public class AuctionController {
     }
 
     @GetMapping
-    public ResponseEntity<List<AuctionResponse>> list(@AuthenticationPrincipal Jwt jwt,
-                                                      @RequestParam(required = false) AuctionStatus status,
-                                                      @RequestParam(required = false) String query,
-                                                      @RequestParam(defaultValue = "0") int page,
-                                                      @RequestParam(defaultValue = "startTime") String sortBy,
-                                                      @RequestParam(defaultValue = "desc") String sortDir,
-                                                      @RequestParam(defaultValue = "50") int limit) {
+    public ResponseEntity<PagedResponse<AuctionResponse>> list(@AuthenticationPrincipal Jwt jwt,
+                                                               @RequestParam(required = false) AuctionStatus status,
+                                                               @RequestParam(required = false) String query,
+                                                               @RequestParam(defaultValue = "0") int page,
+                                                               @RequestParam(defaultValue = "startTime") String sortBy,
+                                                               @RequestParam(defaultValue = "desc") String sortDir,
+                                                               @RequestParam(defaultValue = "50") int limit) {
         JwtSubjectValidator.requireSubject(jwt);
         int safePage = normalizePage(page);
         int safeLimit = normalizeLimit(limit);
         Sort sort = auctionSort(sortBy, sortDir);
         String normalizedQuery = (query == null || query.isBlank()) ? null : query.trim();
-        List<AuctionResponse> items = auctionRepository.search(status, normalizedQuery, PageRequest.of(safePage, safeLimit, sort))
-                .stream()
-                .map(AuctionController::toAuctionResponse)
-                .toList();
-        return ResponseEntity.ok(items);
+        Page<AuctionResponse> result = auctionRepository.search(status, normalizedQuery, PageRequest.of(safePage, safeLimit, sort))
+                .map(AuctionController::toAuctionResponse);
+        return ResponseEntity.ok(PagedResponse.from(result));
     }
 
     @PostMapping("/{auctionId}/start")
@@ -185,12 +203,12 @@ public class AuctionController {
     }
 
     @GetMapping("/{id}/bids")
-    public ResponseEntity<List<BidResponse>> listBids(@AuthenticationPrincipal Jwt jwt,
-                                                      @PathVariable UUID id,
-                                                      @RequestParam(defaultValue = "0") int page,
-                                                      @RequestParam(defaultValue = "createdAt") String sortBy,
-                                                      @RequestParam(defaultValue = "desc") String sortDir,
-                                                      @RequestParam(defaultValue = "50") int limit) {
+    public ResponseEntity<PagedResponse<BidResponse>> listBids(@AuthenticationPrincipal Jwt jwt,
+                                                               @PathVariable UUID id,
+                                                               @RequestParam(defaultValue = "0") int page,
+                                                               @RequestParam(defaultValue = "createdAt") String sortBy,
+                                                               @RequestParam(defaultValue = "desc") String sortDir,
+                                                               @RequestParam(defaultValue = "50") int limit) {
         JwtSubjectValidator.requireSubject(jwt);
         int safePage = normalizePage(page);
         int safeLimit = normalizeLimit(limit);
@@ -198,11 +216,9 @@ public class AuctionController {
         if (!auctionRepository.existsById(id)) {
             throw new IllegalArgumentException("auction not found: " + id);
         }
-        List<BidResponse> bids = bidRepository.findByAuctionId(id, PageRequest.of(safePage, safeLimit, sort))
-                .stream()
-                .map(AuctionController::toBidResponse)
-                .toList();
-        return ResponseEntity.ok(bids);
+        Page<BidResponse> bids = bidRepository.findByAuctionId(id, PageRequest.of(safePage, safeLimit, sort))
+                .map(AuctionController::toBidResponse);
+        return ResponseEntity.ok(PagedResponse.from(bids));
     }
 
     @GetMapping("/{id}/result")
@@ -260,6 +276,13 @@ public class AuctionController {
     }
 
     public record CreateAuctionRequest(@NotBlank @Size(max = 255) String title,
+                                       @NotBlank @Size(max = 4000) String description,
+                                       @NotNull @DecimalMin("0.01") BigDecimal reservePrice,
+                                       @NotNull @DecimalMin("0.01") BigDecimal minIncrement,
+                                       @NotNull OffsetDateTime startTime,
+                                       @NotNull OffsetDateTime endTime) {}
+
+    public record UpdateAuctionRequest(@NotBlank @Size(max = 255) String title,
                                        @NotBlank @Size(max = 4000) String description,
                                        @NotNull @DecimalMin("0.01") BigDecimal reservePrice,
                                        @NotNull @DecimalMin("0.01") BigDecimal minIncrement,

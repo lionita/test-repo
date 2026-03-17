@@ -148,9 +148,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/OnboardBidderResponse'
+                $ref: '#/components/schemas/BidderPageResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -212,9 +210,7 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AuctionResponse'
+                $ref: '#/components/schemas/AuctionPageResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -269,6 +265,39 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+    put:
+      summary: Update an auction
+      description: |
+        Updates auction definition fields while the auction is in `DRAFT` or `SCHEDULED`.
+        Requires `auction.write` scope.
+      operationId: updateAuction
+      tags: [Auctions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAuctionRequest'
+      responses:
+        '200':
+          description: Auction updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuctionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/auctions/{auctionId}/start:
     post:
       summary: Start an auction
@@ -396,16 +425,14 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/BidResponse'
+                $ref: '#/components/schemas/BidPageResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
       summary: Place a bid
-      description: Requires `bid.write` scope. `idempotencyKey` must be unique per `bidderId`.
+      description: Requires `bid.write` scope. `idempotencyKey` must be unique per (`auctionId`, `bidderId`).
       operationId: placeBid
       tags: [Bids]
       parameters:
@@ -501,6 +528,30 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
     CreateAuctionRequest:
+      type: object
+      required: [title, description, reservePrice, minIncrement, startTime, endTime]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 4000
+        reservePrice:
+          type: number
+          format: double
+          minimum: 0.01
+        minIncrement:
+          type: number
+          format: double
+          minimum: 0.01
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+    UpdateAuctionRequest:
       type: object
       required: [title, description, reservePrice, minIncrement, startTime, endTime]
       properties:
@@ -634,6 +685,27 @@ components:
           type: string
           format: date-time
           nullable: true
+    BidderPageResponse:
+      type: object
+      required: [items, page, limit, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OnboardBidderResponse'
+        page:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
     PlaceBidRequest:
       type: object
       required: [bidderId, amount, idempotencyKey]
@@ -687,6 +759,48 @@ components:
         createdAt:
           type: string
           format: date-time
+    AuctionPageResponse:
+      type: object
+      required: [items, page, limit, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuctionResponse'
+        page:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+    BidPageResponse:
+      type: object
+      required: [items, page, limit, totalItems, totalPages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BidResponse'
+        page:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        totalItems:
+          type: integer
+          format: int64
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
     AuctionResultResponse:
       type: object
       required: [auctionId, status]
