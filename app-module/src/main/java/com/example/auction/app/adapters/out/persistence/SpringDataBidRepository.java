@@ -1,11 +1,11 @@
 package com.example.auction.app.adapters.out.persistence;
 
 import com.example.auction.bidding.domain.BidStatus;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -14,5 +14,5 @@ public interface SpringDataBidRepository extends JpaRepository<BidJpaEntity, UUI
     long maxSequenceByAuctionId(UUID auctionId);
     Optional<BidJpaEntity> findByAuctionIdAndBidderIdAndIdempotencyKey(UUID auctionId, String bidderId, String idempotencyKey);
     Optional<BidJpaEntity> findFirstByAuctionIdAndBidStatusOrderByAmountDescSequenceNumberAsc(UUID auctionId, BidStatus bidStatus);
-    List<BidJpaEntity> findByAuctionId(UUID auctionId, Pageable pageable);
+    Page<BidJpaEntity> findByAuctionId(UUID auctionId, Pageable pageable);
 }

@@ -10,6 +10,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
@@ -21,7 +22,6 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.OffsetDateTime;
-import java.util.List;
 import java.util.Set;
 
 @RestController
@@ -38,20 +38,18 @@ public class BidderController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('SCOPE_admin.write')")
-    public ResponseEntity<List<OnboardBidderResponse>> listBidders(@AuthenticationPrincipal Jwt jwt,
-                                                                   @RequestParam(defaultValue = "0") int page,
-                                                                   @RequestParam(defaultValue = "50") int limit,
-                                                                   @RequestParam(defaultValue = "createdAt") String sortBy,
-                                                                   @RequestParam(defaultValue = "desc") String sortDir) {
+    public ResponseEntity<PagedResponse<OnboardBidderResponse>> listBidders(@AuthenticationPrincipal Jwt jwt,
+                                                                             @RequestParam(defaultValue = "0") int page,
+                                                                             @RequestParam(defaultValue = "50") int limit,
+                                                                             @RequestParam(defaultValue = "createdAt") String sortBy,
+                                                                             @RequestParam(defaultValue = "desc") String sortDir) {
         JwtSubjectValidator.requireSubject(jwt);
         int safePage = normalizePage(page);
         int safeLimit = normalizeLimit(limit);
         Sort sort = bidderSort(sortBy, sortDir);
-        List<OnboardBidderResponse> bidders = bidderRepository.findByDeletedAtIsNull(PageRequest.of(safePage, safeLimit, sort))
-                .stream()
-                .map(BidderController::toResponse)
-                .toList();
-        return ResponseEntity.ok(bidders);
+        Page<OnboardBidderResponse> bidders = bidderRepository.findByDeletedAtIsNull(PageRequest.of(safePage, safeLimit, sort))
+                .map(BidderController::toResponse);
+        return ResponseEntity.ok(PagedResponse.from(bidders));
     }
 
     @PostMapping("/onboarding")
